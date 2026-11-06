@@ -1,5 +1,7 @@
 import http from 'node:http';
 import {createSongSearch} from './song-search.js';
+import {createChartSource} from './chart-source.js';
+const loadChart=createChartSource();
 http.setGlobalProxyFromEnv?.();
 const searchSongs=createSongSearch();
 import {readFile} from 'node:fs/promises';
@@ -8,6 +10,12 @@ const root=new URL('./',import.meta.url);
 const allowed={'/':'index.html','/index.html':'index.html','/style.css':'style.css','/app.js':'app.js','/music.js':'music.js','/guitar-audio.js':'guitar-audio.js','/tuner.js':'tuner.js','/charts.js':'charts.js','/charts-ui.js':'charts-ui.js','/song-picker.js':'song-picker.js'};
 http.createServer(async(req,res)=>{
 const url=new URL(req.url,'http://localhost');
+if(url.pathname==='/api/song-chart'){
+  res.setHeader('Content-Type','application/json; charset=utf-8');res.setHeader('Cache-Control','no-store');
+  if(req.method!=='GET'){res.writeHead(405,{Allow:'GET'});res.end(JSON.stringify({error:'Use GET for chart generation.'}));return}
+  try{res.end(JSON.stringify(await loadChart({title:url.searchParams.get('title'),artist:url.searchParams.get('artist'),id:url.searchParams.get('id')})))}
+  catch(error){res.writeHead(error.status||502);res.end(JSON.stringify({error:error.message}))}return;
+}
 if(url.pathname==='/api/songs'){
   res.setHeader('Content-Type','application/json; charset=utf-8');res.setHeader('Cache-Control','no-store');
   if(req.method!=='GET'){res.writeHead(405,{Allow:'GET'});res.end(JSON.stringify({error:'Use GET for song search.'}));return}

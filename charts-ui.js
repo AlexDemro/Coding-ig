@@ -3,7 +3,16 @@ import {layoutChart,chartSVG,chartSummary} from './charts.js';
 const $=id=>document.getElementById(id);
 const example='[Verse]\n[G]Take a little breath, let the [D]day roll by\n[Em]Find a little melody [C]under the sky\n\n[Chorus]\n[G]One more chord and a [D]little more time\n[Em]Your own rhythm, [C]your own rhyme';
 export function initCharts(){
-  const previews=new Map();
+  const previews=new Map();let selectedSong=null,chartController,generation=0;
+  function resetGeneration(){generation++;chartController?.abort();$('song-progress').hidden=true;$('song-go').disabled=!selectedSong;$('song-go').textContent='Go →'}
+  function clearSelection(){selectedSong=null;resetGeneration();$('song-go-hint').textContent='Select a song to get started.'}
+  function progress(value,title,message,state='loading'){
+    $('song-progress').hidden=false;$('song-progress').setAttribute('data-state',state);
+    $('song-progress-title').textContent=title;$('song-progress-message').textContent=message;
+    $('song-progress-ring').style.setProperty('--progress',String((value||0)*3.6)+'deg');
+    $('song-progress-value').textContent=value===null?'…':value+'%';
+    if(value===null)$('song-progress-ring').removeAttribute('aria-valuenow');else $('song-progress-ring').setAttribute('aria-valuenow',String(value));
+  }
   function clear(prefix){for(const url of previews.get(prefix)||[])URL.revokeObjectURL(url);previews.set(prefix,[]);$(prefix+'-pages').replaceChildren()}
   function stale(prefix){clear(prefix);$(prefix+'-chart-status').textContent='Your changes are ready. Generate the image again to update the preview.'}
   async function png(svg){
@@ -40,21 +49,48 @@ export function initCharts(){
       $(prefix+'-chart-status').textContent=`${pages.length} image${pages.length===1?'':'s'} ready · ${summary.chords} chord symbols. Check the chord placement before downloading.`;
     }catch(error){$(prefix+'-chart-status').textContent=error.message}
   }
-  $('song-generate').onclick=()=>generate('song');$('sheet-generate').onclick=()=>generate('sheet');
+  $('song-go').onclick=async()=>{
+    if(!selectedSong)return;
+    resetGeneration();clear('song');$('song-chart-status').textContent='';
+    const current=generation,song={...selectedSong};chartController=new AbortController();
+    $('song-go').disabled=true;$('song-go').textContent='Working…';
+    progress(null,'Finding your chart…','Looking for lyrics and correctly positioned chords.');
+    try{
+      const response=await fetch('/api/song-chart?'+new URLSearchParams({title:song.title,artist:song.artist,id:song.id||''}),{signal:chartController.signal});
+      const result=await response.json();if(current!==generation)return;
+      if(!response.ok)throw new Error(result.error||'The chart could not be loaded.');
+      progress(35,'Checking the chart…','Verifying the song and its chord positions.');
+      if(result.title!==song.title||result.artist!==song.artist||typeof result.chart!=='string')throw new Error('The chart does not match your selected song.');
+      const summary=chartSummary(layoutChart(result.chart));if(!summary.lyrics||!summary.chords)throw new Error('A complete lyric-and-chord chart was not found.');
+      $('song-text').value=result.chart;
+      progress(60,'Creating your image…','Placing chords above the words.');
+      await new Promise(resolve=>requestAnimationFrame(resolve));if(current!==generation)return;
+      generate('song');
+      const images=[...$('song-pages').querySelectorAll('img')];if(!images.length)throw new Error('The chart image could not be created.');
+      progress(85,'Finishing your image…','Preparing the image preview and downloads.');
+      await Promise.all(images.map(image=>image.decode()));if(current!==generation)return;
+      progress(100,'Your chord sheet is ready','Download your image below.','ready');
+    }catch(error){
+      if(current!==generation||error.name==='AbortError')return;
+      clear('song');progress(null,'Your image isn’t ready',error.message||'Chart generation failed. Please try again.','error');
+    }finally{if(current===generation){$('song-go').disabled=false;$('song-go').textContent='Go →'}}
+  };
+  $('song-generate').onclick=()=>{resetGeneration();generate('song')};$('sheet-generate').onclick=()=>generate('sheet');
   function selectSong(song){
+    selectedSong=song;resetGeneration();$('song-go-hint').textContent='Create a lyric-and-chord image.';
     $('song-title').value=song.title;$('song-artist').value=song.artist;
     $('selected-song-title').textContent=song.title;$('selected-song-artist').textContent=song.artist;
     $('selected-song-spotify').href=song.spotifyUrl||'https://open.spotify.com/search/'+encodeURIComponent(song.title+' '+song.artist);
-    $('selected-song').hidden=false;stale('song');
+    $('selected-song').hidden=false;clear('song');$('song-chart-status').textContent='';
   }
   const picker=initSongPicker({onSelect:selectSong,onClear(){
-    $('song-title').value='';$('song-artist').value='';$('selected-song').hidden=true;stale('song');
+    clearSelection();$('song-title').value='';$('song-artist').value='';$('selected-song').hidden=true;clear('song');$('song-chart-status').textContent='';
   }});
-  $('change-song').onclick=()=>{picker.reset();$('song-title').value='';$('song-artist').value='';$('selected-song').hidden=true;stale('song');$('song-search').focus()};
+  $('change-song').onclick=()=>{picker.reset();clearSelection();$('song-title').value='';$('song-artist').value='';$('selected-song').hidden=true;clear('song');$('song-chart-status').textContent='';$('song-search').focus()};
   $('use-custom-song').onclick=()=>{picker.reset();selectSong({title:$('custom-song-title').value.trim()||'My chord sheet',artist:$('custom-song-artist').value.trim()})};
   $('song-example').onclick=()=>{picker.reset();$('song-text').value=example;selectSong({title:'A little more music',artist:'Original practice example'})};
   for(const prefix of ['song','sheet']){
-    for(const id of [prefix+'-title',prefix+'-artist',prefix==='sheet'?'sheet-text':'song-text'])$(id).addEventListener('input',()=>stale(prefix));
+    for(const id of [prefix+'-title',prefix+'-artist',prefix==='sheet'?'sheet-text':'song-text'])$(id).addEventListener('input',()=>{if(prefix==='song')resetGeneration();stale(prefix)});
   }
   $('sheet-text').addEventListener('chart-ready',()=>generate('sheet'));
   $('sheet-file').addEventListener('change',()=>clear('sheet'));

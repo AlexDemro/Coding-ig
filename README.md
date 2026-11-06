@@ -10,7 +10,7 @@ Requires Node.js 18 or newer. No package installation is required.
 npm start
 ```
 
-The server listens on port 3000; set `PORT` to override it. Run `npm test` for the 36 music, tuner, chart-layout, and song-search tests.
+The server listens on port 3000; set `PORT` to override it. Run `npm test` for the 40 music, tuner, chart-layout, song-search, and chart-source tests.
 
 ## Tools
 
@@ -65,3 +65,27 @@ With Node.js 22+ and Chromium installed, start a server on port 3001 (`PORT=3001
 The endpoint bounds queries to 120 characters and results to eight suggestions, ranks combined title/artist tokens, deduplicates releases, caches results for five minutes, coalesces concurrent identical searches, and times out upstream requests after seven seconds. The UI cancels outdated requests and ignores late responses; it supports empty results, provider/network errors, Escape dismissal, keyboard selection, and touch. Node versions supporting `http.setGlobalProxyFromEnv` use the environment's configured proxy.
 
 Network access to **itunes.apple.com** is required on the server. In this managed cloud environment, the initial live lookup was blocked by the outbound policy. The domain addition was saved in the environment configuration draft, but requires review/save and publication before cloud access can be claimed. Browser autocomplete tests use a catalog fixture; search-service tests exercise ranking, response validation, caching, request coalescing and provider failures. A successful real catalog query remains unverified in this cloud instance.
+
+## Search → select → Go
+
+The main song screen no longer asks for lyrics or chords. Select a catalog suggestion and press **Go**. A progress ring waits for a full chart, validates that it matches the selected title/artist and contains lyrics plus positioned chords, creates paginated SVG images, waits for those images to decode, and offers PNG/SVG downloads. While waiting on the chart source, the spinner is indeterminate because no real completion percentage is known. Percentages 35/60/85/100 represent completed processing stages, not an invented time estimate. Failed or missing charts never reach 100% or create an image. Editing or changing a selection cancels the previous generation and clears stale output.
+
+The optional manual editor remains collapsed under **Optional: create an image from a chart you already have**. The photo reader remains available.
+
+**Current blocker:** no full-chart source is connected. Song catalog metadata alone cannot produce a complete, accurate lyric-and-chord image. Go reports this missing connection clearly; it no longer sends users to external chart searches. Automatic output has been exercised with test fixtures only, not a real commercial-song catalog.
+
+### Connecting an authorized chart source
+
+The server adapter accepts `SONG_CHART_ENDPOINT`, an HTTPS endpoint backed by an authorized collection of lyric-and-chord charts. `SONG_CHART_TOKEN` is an optional bearer credential if that source needs it. No endpoint or credential is bundled, invented, or currently configured. A provider-specific adapter may be needed to meet this contract; these variable names do not imply an existing third-party API. Configure secrets securely on your server, never in browser code. Allow the chosen destination through the environment network policy before using it.
+
+The endpoint receives GET query parameters `title`, `artist`, and `id` (catalog track ID). It must return JSON like:
+
+```json
+{
+  "title": "Test Song",
+  "artist": "Test Artist",
+  "chart": "[G]Original test words with a [C]chord change"
+}
+```
+
+`chart` can use inline ChordPro notation or chord lines directly above lyric lines. The adapter checks title/artist identity, response bounds, and the presence of both lyrics and chords. Wrong-song, absent, unreadable, unconfigured, and unreachable sources return clear errors. It does not scrape sites, infer harmonies, or invent words. Browser tests mock the source to check progress through image creation, missing-source errors, and removal of stale results. Connecting a real chart collection and validating its accuracy remain outstanding.
