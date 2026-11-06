@@ -31,7 +31,8 @@ try{
  assert.equal(await evaluate("document.querySelectorAll('[data-tab=\"song-maker\"],[data-go=\"song-maker\"],#song-maker').length"),0);
  await evaluate("document.querySelector('[data-tab=\"reader\"]').click();window.testAudio.close()");
  assert.equal(await evaluate("document.querySelectorAll('#reader textarea,#reader pre,#reader code,#reader details').length"),0,'reader has no text editor or code output');
- assert.ok(await evaluate("document.querySelector('link[rel=icon]').href.endsWith('/favicon.svg')"));
+ assert.ok(await evaluate("new URL(document.querySelector('link[rel=icon]').href).pathname==='/favicon.svg'"));
+ assert.equal(await evaluate("document.querySelector('.brand-mark').src===document.querySelector('link[rel=icon]').href"),true,'browser tab and site header use exactly the same logo asset');
  // Simulated OCR exercises photo selection through an actual PNG image export.
  await evaluate(`window.Tesseract={createWorker:async()=>({setParameters:async()=>{},recognize:async file=>{if(file.name==='bad.png')return {data:{text:'Only staff symbols, no chart'}};if(file.name==='slow.png')await new Promise(r=>setTimeout(r,600));return {data:{text:'G          C\\nAn original practice line\\nAm         D\\nAnother original line'}}},terminate:async()=>{}})};window.uploadPhoto=name=>{const transfer=new DataTransfer();transfer.items.add(new File(['test'],name,{type:'image/png'}));const input=document.getElementById('sheet-file');input.files=transfer.files;input.dispatchEvent(new Event('change'))};window.uploadPhoto('chart.png')`);
  for(let i=0;i<100;i++){if(await evaluate("document.querySelectorAll('#sheet-pages .chart-page').length>0"))break;await new Promise(r=>setTimeout(r,50))}

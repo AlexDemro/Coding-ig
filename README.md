@@ -33,7 +33,7 @@ Tesseract.js 5 runs locally in the browser, including automatic orientation dete
 
 ## Browser-tab icon
 
-The website includes a green FretMate F icon as SVG, multi-size ICO, PNG, and an Apple touch icon. The server supplies the correct image MIME types. Browsers can cache old favicons; a hard refresh, new tab, or clearing site data may be needed after updating the deployed files. The Hostinger domain is **fretmate.online**; GitHub updates do not deploy it.
+The website includes the same green natural-sign (♮) logo used beside the FretMate name as SVG, multi-size ICO, PNG, and an Apple touch icon. The server supplies the correct image MIME types. The header and tab share the same SVG asset, with versioned links to refresh the old F icon. Browsers can cache old favicons; a hard refresh, new tab, or clearing site data may be needed after updating the deployed files. The Hostinger domain is **fretmate.online**; GitHub updates do not deploy it.
 
 ## Windows: port already in use
 
