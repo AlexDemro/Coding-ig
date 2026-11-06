@@ -1,3 +1,4 @@
+import {createGuitar} from './guitar-audio.js';
 import {notes,transpose,extractChords,detectPitch} from './music.js';
 const $=id=>document.getElementById(id);let stopMic=()=>{},stopMetro=()=>{},stopStrum=()=>{};
 function navigate(tab){stopMic();stopMetro();stopStrum();document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.id===tab));document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x.dataset.tab===tab));$('page-name').textContent=document.querySelector(`[data-tab="${tab}"] span`).textContent;window.scrollTo(0,0)}
@@ -10,7 +11,16 @@ for(let i=0;i<=12;i++)$('capo-fret').add(new Option(i===0?'No capo':`Fret ${i}`,
 function showChords(id,chords){$(id).replaceChildren(...chords.map(c=>{let el=document.createElement('span');el.textContent=c;return el}))}
 function convert(){let input=$('capo-input').value.trim().split(/\s+/).filter(Boolean),valid=extractChords(input.join(' '));if(valid.length!==input.length){$('capo-output').textContent='Use chord names such as C, F#m, Bb7, or D/F#.';return}showChords('capo-output',valid.map(c=>transpose(c,Number($('capo-fret').value)*Number($('capo-mode').value))))}
 ['capo-fret','capo-mode','capo-input'].forEach(id=>$(id).addEventListener('input',convert));convert();
-let audio;async function getAudio(){audio??=new AudioContext();if(audio.state==='suspended')await audio.resume();return audio}
+let audio;
+function prepareAudio(){
+  const AudioEngine=window.AudioContext||window.webkitAudioContext;
+  if(!AudioEngine)throw new Error('Your browser does not support audio. Try a current version of Chrome, Edge, Firefox, or Safari.');
+  audio??=new AudioEngine();
+  return audio;
+}
+async function getAudio(){const ctx=prepareAudio();if(ctx.state!=='running')await ctx.resume();return ctx}
+let guitar;
+
 function clickAt(ctx,time,accent=true){const osc=ctx.createOscillator(),gain=ctx.createGain();osc.frequency.value=accent?1100:750;gain.gain.setValueAtTime(.15,time);gain.gain.exponentialRampToValueAtTime(.001,time+.055);osc.connect(gain);gain.connect(ctx.destination);osc.start(time);osc.stop(time+.06)}
 let metroRunning=false,metroTimer,metroBeat=0,nextBeat=0;
 function dots(){ $('beat-dots').innerHTML=Array.from({length:Number($('beats').value)},()=>'<i></i>').join('') }dots();
@@ -21,10 +31,67 @@ $('metro-toggle').onclick=async()=>{if(metroRunning){stopMetro();return}try{cons
 let taps=[];$('tap').onclick=()=>{const now=performance.now();if(taps.length&&now-taps.at(-1)>2500)taps=[];taps.push(now);taps=taps.slice(-5);if(taps.length>1){$('bpm').value=Math.round(60000/((now-taps[0])/(taps.length-1)));$('bpm').oninput()}};
 const patterns=[{steps:['↓','·','↓','·','↓','·','↓','·'],description:'One downstroke on each beat. Relax your wrist and keep an even pulse.'},{steps:['↓','·','↓','↑','·','↑','↓','↑'],description:'The classic down, down-up, up-down-up. Let your hand keep swinging on beat three.'},{steps:['↓','↑','↓','↑','↓','↑','↓','↑'],description:'Even eighth notes. Keep the upstrokes light and accent the downbeats.'},{steps:['·','↑','·','↑','·','↑','·','↑'],description:'Play the “and” of each beat. Keep each upstroke crisp and short.'}];
 function renderPattern(){const p=patterns[Number($('pattern').value)];$('strum-grid').innerHTML=p.steps.map((s,i)=>`<div><small>${i%2?'&':i/2+1}</small><b>${s}</b></div>`).join('');$('pattern-description').textContent=p.description}renderPattern();let strumRunning=false,strumTimer;
-stopStrum=()=>{clearInterval(strumTimer);strumRunning=false;$('strum-play').textContent='Play pattern';document.querySelectorAll('#strum-grid div').forEach(x=>x.classList.remove('on'))};$('pattern').onchange=()=>{stopStrum();renderPattern()};$('strum-tempo').oninput=()=>$('strum-tempo-label').textContent=$('strum-tempo').value+' BPM';
-$('strum-play').onclick=async()=>{if(strumRunning){stopStrum();return}try{const ctx=await getAudio();strumRunning=true;let step=0,next=ctx.currentTime+.05;$('strum-play').textContent='Stop pattern';strumTimer=setInterval(()=>{while(next<ctx.currentTime+.1){const i=step%8,s=patterns[Number($('pattern').value)].steps[i];if(s!=='·')clickAt(ctx,next,s==='↓');setTimeout(()=>{if(strumRunning)document.querySelectorAll('#strum-grid div').forEach((x,j)=>x.classList.toggle('on',i===j))},Math.max(0,(next-ctx.currentTime)*1000));step++;next+=30/Number($('strum-tempo').value)}},25)}catch{$('pattern-description').textContent='Audio could not start. Try again in a browser with Web Audio support.'}};
-let stream,frame,micPending=false,micGeneration=0;stopMic=()=>{micGeneration++;stream?.getTracks().forEach(t=>t.stop());stream=null;cancelAnimationFrame(frame);$('mic').textContent='Enable microphone';$('tune-status').textContent='Ready when you are'};
-$('mic').onclick=async()=>{if(stream){stopMic();return}if(micPending)return;micPending=true;const generation=micGeneration;try{if(!navigator.mediaDevices?.getUserMedia)throw new Error('Use HTTPS or localhost in a browser that supports microphone access.');const acquired=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});if(generation!==micGeneration){acquired.getTracks().forEach(t=>t.stop());return}stream=acquired;const ctx=await getAudio(),source=ctx.createMediaStreamSource(stream),analyser=ctx.createAnalyser();analyser.fftSize=4096;source.connect(analyser);const samples=new Float32Array(analyser.fftSize);$('mic').textContent='Stop listening';let last=0;function tick(time){if(!stream)return;if(time-last>130){last=time;analyser.getFloatTimeDomainData(samples);const hz=detectPitch(samples,ctx.sampleRate);if(hz){const midi=Math.round(69+12*Math.log2(hz/440)),ideal=440*2**((midi-69)/12),cents=1200*Math.log2(hz/ideal);$('pitch-note').textContent=notes[(midi%12+12)%12]+(Math.floor(midi/12)-1);$('pitch-detail').textContent=`${hz.toFixed(1)} Hz · ${Math.round(cents)>0?'+':''}${Math.round(cents)} cents`;$('tune-status').textContent=Math.abs(cents)<6?'You’re in tune':cents<0?'A little flat — tighten the string':'A little sharp — loosen the string';$('needle').style.left=`${Math.max(0,Math.min(100,50+cents))}%`}else{$('tune-status').textContent='Listening… pluck one string';$('pitch-note').textContent='—';$('pitch-detail').textContent='Let the note ring clearly.'}}frame=requestAnimationFrame(tick)}frame=requestAnimationFrame(tick)}catch(e){stopMic();$('tune-status').textContent=e.name==='NotAllowedError'?'Microphone permission denied. Allow access in your browser and try again.':e.message}finally{micPending=false}};
+stopStrum=()=>{guitar?.stop();clearInterval(strumTimer);strumRunning=false;$('strum-play').textContent='Play pattern';document.querySelectorAll('#strum-grid div').forEach(x=>x.classList.remove('on'))};$('pattern').onchange=()=>{stopStrum();renderPattern()};$('strum-tempo').oninput=()=>$('strum-tempo-label').textContent=$('strum-tempo').value+' BPM';
+$('strum-play').onclick=async()=>{if(strumRunning){stopStrum();return}try{const ctx=await getAudio();guitar??=createGuitar(ctx);strumRunning=true;let step=0,next=ctx.currentTime+.05;$('strum-play').textContent='Stop pattern';strumTimer=setInterval(()=>{while(next<ctx.currentTime+.1){const i=step%8,s=patterns[Number($('pattern').value)].steps[i];if(s!=='·')guitar.strum(next,$('strum-chord').value,s==='↑');setTimeout(()=>{if(strumRunning)document.querySelectorAll('#strum-grid div').forEach((x,j)=>x.classList.toggle('on',i===j))},Math.max(0,(next-ctx.currentTime)*1000));step++;next+=30/Number($('strum-tempo').value)}},25)}catch{$('pattern-description').textContent='Audio could not start. Try again in a browser with Web Audio support.'}};
+let stream,frame,micPending=false,micGeneration=0,micWatchdog;stopMic=()=>{micGeneration++;micPending=false;clearTimeout(micWatchdog);stream?.getTracks().forEach(t=>t.stop());stream=null;cancelAnimationFrame(frame);$('mic').textContent='Enable microphone';$('mic').setAttribute('aria-busy','false');$('tune-status').textContent='Ready when you are'};
+$('mic').onclick=async()=>{
+  if(stream||micPending){stopMic();return}
+  micPending=true;
+  const generation=++micGeneration;
+  $('mic').textContent='Cancel microphone request';
+  $('mic').setAttribute('aria-busy','true');
+  $('tune-status').textContent='Waiting for microphone permission…';
+  $('pitch-detail').textContent='Choose Allow in your browser’s microphone prompt. If it is hidden, check the icon beside the address bar.';
+  try{
+    if(!window.isSecureContext)throw new Error('The tuner needs HTTPS or localhost. On your computer, run npm start and open http://localhost:3000 instead of opening index.html.');
+    if(!navigator.mediaDevices?.getUserMedia)throw new Error('Microphone access is unavailable here. Open the site directly in Chrome, Edge, Firefox, or Safari.');
+    // Start/resume audio inside the click gesture, before awaiting permission.
+    // Safari may otherwise leave the audio context suspended indefinitely.
+    const ctx=prepareAudio();
+    const ready=ctx.state==='running'?Promise.resolve():ctx.resume();
+    ready.catch(()=>{});
+    micWatchdog=setTimeout(()=>{
+      if(generation===micGeneration&&micPending){
+        $('tune-status').textContent='Still waiting for your browser…';
+        $('pitch-detail').textContent='Allow the microphone using the icon beside the address bar. If you are in a preview, open the site directly. You can cancel and try again.';
+      }
+    },10000);
+    const acquired=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    if(generation!==micGeneration){acquired.getTracks().forEach(t=>t.stop());return}
+    stream=acquired;
+    let audioTimeout;
+    try { await Promise.race([ready,new Promise((_,reject)=>{audioTimeout=setTimeout(()=>reject(new Error('Browser audio did not start. Cancel, then enable the microphone again, or open the site directly in a new browser tab.')),5000)})]); }
+    finally { clearTimeout(audioTimeout); }
+    if(generation!==micGeneration)return;
+    clearTimeout(micWatchdog);
+    const source=ctx.createMediaStreamSource(stream),analyser=ctx.createAnalyser();
+    analyser.fftSize=4096;
+    source.connect(analyser);
+    // Keep the graph processing without playing microphone sound back.
+    const silent=ctx.createGain();silent.gain.value=0;
+    analyser.connect(silent);silent.connect(ctx.destination);
+    const release=stopMic;
+    stopMic=()=>{source.disconnect();analyser.disconnect();silent.disconnect();stopMic=release;release()};
+    const samples=new Float32Array(analyser.fftSize);
+    $('mic').textContent='Stop listening';
+    $('tune-status').textContent='Listening… pluck one string';
+    $('pitch-detail').textContent='Microphone connected. Play one clear note.';
+    let last=0;function tick(time){if(!stream)return;if(time-last>130){last=time;analyser.getFloatTimeDomainData(samples);const hz=detectPitch(samples,ctx.sampleRate);if(hz){const midi=Math.round(69+12*Math.log2(hz/440)),ideal=440*2**((midi-69)/12),cents=1200*Math.log2(hz/ideal);$('pitch-note').textContent=notes[(midi%12+12)%12]+(Math.floor(midi/12)-1);$('pitch-detail').textContent=`${hz.toFixed(1)} Hz · ${Math.round(cents)>0?'+':''}${Math.round(cents)} cents`;$('tune-status').textContent=Math.abs(cents)<6?'You’re in tune':cents<0?'A little flat — tighten the string':'A little sharp — loosen the string';$('needle').style.left=`${Math.max(0,Math.min(100,50+cents))}%`}else{$('tune-status').textContent='Listening… pluck one string';$('pitch-note').textContent='—';$('pitch-detail').textContent='Let the note ring clearly.'}}frame=requestAnimationFrame(tick)}frame=requestAnimationFrame(tick)
+  }catch(e){
+    if(generation!==micGeneration)return;
+    stopMic();
+    const messages={
+      NotAllowedError:'Microphone access was blocked. Click the permissions icon beside the address bar, allow Microphone, and try again. Embedded previews may block it; open the site directly.',
+      NotFoundError:'No microphone was found. Connect a microphone or enable your built-in microphone, then try again.',
+      NotReadableError:'Your microphone is unavailable or in use. Check Windows microphone privacy settings and close other recording apps, then try again.',
+      SecurityError:'Your browser blocked the microphone. Open the site directly using HTTPS or localhost.'
+    };
+    $('tune-status').textContent=messages[e.name]||e.message||'Could not start the microphone. Please try again.';
+    $('pitch-detail').textContent='On Windows: Settings → Privacy & security → Microphone → allow desktop apps to access your microphone.';
+  }finally{
+    if(generation===micGeneration){micPending=false;clearTimeout(micWatchdog);$('mic').setAttribute('aria-busy','false')}
+  }
+};
 let imageUrl,selectedFile;$('sheet-file').onchange=()=>{selectedFile=$('sheet-file').files[0];if(!selectedFile)return;if(!['image/jpeg','image/png','image/webp'].includes(selectedFile.type)||selectedFile.size>15*1024*1024){$('read-status').textContent='Choose a JPG, PNG, or WebP image under 15 MB.';$('read-sheet').disabled=true;return}if(imageUrl)URL.revokeObjectURL(imageUrl);imageUrl=URL.createObjectURL(selectedFile);$('sheet-preview').src=imageUrl;$('sheet-preview').hidden=false;$('read-sheet').disabled=false;$('read-status').textContent='Photo ready. For best results, crop closely around printed chord symbols.';showChords('sheet-results',[])};
 function displayExtract(text){const chords=extractChords(text);showChords('sheet-results',chords);$('read-status').textContent=chords.length?`Found ${chords.length} chord symbols. Check them against your music.`:'No chord symbols found. Try a clearer crop, or type your chord line below.'}
 $('parse-sheet').onclick=()=>displayExtract($('sheet-text').value);
