@@ -1,8 +1,10 @@
+import './charts-ui.js';
 import {GuitarTuner,TuningGuide,microphoneConstraints} from './tuner.js';
 import {createGuitar} from './guitar-audio.js';
 import {notes,transpose,extractChords} from './music.js';
 const $=id=>document.getElementById(id);let stopMic=()=>{},stopMetro=()=>{},stopStrum=()=>{};
-function navigate(tab){stopMic();stopMetro();stopStrum();document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.id===tab));document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x.dataset.tab===tab));$('page-name').textContent=document.querySelector(`[data-tab="${tab}"] span`).textContent;window.scrollTo(0,0)}
+function navigate(tab){stopMic();stopMetro();stopStrum();document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.id===tab));document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x.dataset.tab===tab));$('page-name').textContent=document.querySelector(`[data-tab="${tab}"] span`).textContent;document.querySelector('aside')?.classList.remove('navigation-open');$('menu-toggle').setAttribute('aria-expanded','false');window.scrollTo(0,0)}
+$('menu-toggle').onclick=()=>{const open=$('menu-toggle').getAttribute('aria-expanded')!=='true';$('menu-toggle').setAttribute('aria-expanded',String(open));document.querySelector('aside').classList.toggle('navigation-open',open)};
 document.querySelectorAll('[data-tab],[data-go]').forEach(b=>b.onclick=()=>navigate(b.dataset.tab||b.dataset.go));
 const shapes={C:[-1,3,2,0,1,0],D:[-1,-1,0,2,3,2],E:[0,2,2,1,0,0],F:[1,3,3,2,1,1],G:[3,2,0,0,0,3],A:[-1,0,2,2,2,0],B:[-1,2,4,4,4,2],Am:[-1,0,2,2,1,0],Dm:[-1,-1,0,2,3,1],Em:[0,2,2,0,0,0],Bm:[-1,2,4,4,3,2],C7:[-1,3,2,3,1,0],D7:[-1,-1,0,2,1,2],E7:[0,2,0,1,0,0],G7:[3,2,0,0,0,1],A7:[-1,0,2,0,2,0]};
 function diagram(frets){let s='<svg viewBox="0 0 140 160" role="img" aria-label="Guitar chord fingering"><path d="M25 30H115" stroke="#344b37" stroke-width="4"/>';for(let i=0;i<6;i++)s+=`<path d="M${25+i*18} 30V130" stroke="#a8b29c"/>`;for(let i=1;i<=5;i++)s+=`<path d="M25 ${30+i*20}H115" stroke="#a8b29c"/>`;frets.forEach((f,i)=>{s+=f>0?`<circle cx="${25+i*18}" cy="${20+f*20}" r="7" fill="#36543b"/>`:`<text x="${25+i*18}" y="20" text-anchor="middle" font-size="13" fill="#8c997d">${f<0?'×':'○'}</text>`;s+=`<text x="${25+i*18}" y="148" text-anchor="middle" font-size="9" fill="#8c997d">${'EADGBe'[i]}</text>`});return s+'</svg>'}
@@ -36,8 +38,10 @@ stopStrum=()=>{guitar?.stop();clearInterval(strumTimer);strumRunning=false;$('st
 $('strum-play').onclick=async()=>{if(strumRunning){stopStrum();return}try{const ctx=await getAudio();guitar??=createGuitar(ctx);strumRunning=true;let step=0,next=ctx.currentTime+.05;$('strum-play').textContent='Stop pattern';strumTimer=setInterval(()=>{while(next<ctx.currentTime+.1){const i=step%8,s=patterns[Number($('pattern').value)].steps[i];if(s!=='·')guitar.strum(next,$('strum-chord').value,s==='↑');setTimeout(()=>{if(strumRunning)document.querySelectorAll('#strum-grid div').forEach((x,j)=>x.classList.toggle('on',i===j))},Math.max(0,(next-ctx.currentTime)*1000));step++;next+=30/Number($('strum-tempo').value)}},25)}catch{$('pattern-description').textContent='Audio could not start. Try again in a browser with Web Audio support.'}};
 let targetMidi=null,guide=new TuningGuide(),lastGuide=null;
 function noteName(midi){return notes[(midi%12+12)%12]+(Math.floor(midi/12)-1)}
-function setTunerState(state,symbol,label){
+function setTunerState(state,symbol,label,cents=null){
   $('tuner-readout').setAttribute('data-state',state);
+  const active=cents===null?null:Math.max(0,Math.min(12,Math.round(6+cents/8)));
+  document.querySelectorAll('[data-arc]').forEach(segment=>{const index=Number(segment.dataset.arc);segment.classList.toggle('lit',active!==null&&(active<=6?index<=active:index>=active));segment.classList.toggle('current',index===active)});
   $('tuner-symbol').textContent=symbol;$('tuner-note-label').textContent=label;
   for(const direction of ['tighten','tuned','loosen'])$('guide-'+direction).classList.toggle('active',state===direction);
 }
@@ -114,10 +118,10 @@ $('mic').onclick=async()=>{
           $('pitch-note').textContent=noteName(midi);
           const close=Math.abs(cents)<.5;
           $('pitch-detail').textContent=`${close?'Right on pitch':Math.abs(Math.round(cents))+' cents '+(cents<0?'below':'above')+' target'} · ${reading.hz.toFixed(1)} Hz`;
-          const messages={tuned:'You’re in tune!',tighten:'Tighten the string gently',loosen:'Loosen the string gently'};
+          const messages={tuned:'You’re in tune!',tighten:'Tune up — tighten gently',loosen:'Tune down — loosen gently'};
           const symbols={tuned:'✓',tighten:'↑',loosen:'↓'};
           $('tune-status').textContent=messages[direction];
-          setTunerState(direction,symbols[direction],direction==='tuned'?'SOUNDS GOOD':direction==='tighten'?'PITCH IS TOO LOW':'PITCH IS TOO HIGH');
+          setTunerState(direction,symbols[direction],direction==='tuned'?'SOUNDS GOOD':direction==='tighten'?'PITCH IS TOO LOW':'PITCH IS TOO HIGH',cents);
         }else if(reading.heldHz&&lastGuide){
           // A short, explicitly marked hold avoids blanking on a single missed
           // frame. It never claims that a held note is still in tune.
@@ -149,9 +153,33 @@ $('mic').onclick=async()=>{
     if(generation===micGeneration){micPending=false;clearTimeout(micWatchdog);$('mic').setAttribute('aria-busy','false')}
   }
 };
-let imageUrl,selectedFile;$('sheet-file').onchange=()=>{selectedFile=$('sheet-file').files[0];if(!selectedFile)return;if(!['image/jpeg','image/png','image/webp'].includes(selectedFile.type)||selectedFile.size>15*1024*1024){$('read-status').textContent='Choose a JPG, PNG, or WebP image under 15 MB.';$('read-sheet').disabled=true;return}if(imageUrl)URL.revokeObjectURL(imageUrl);imageUrl=URL.createObjectURL(selectedFile);$('sheet-preview').src=imageUrl;$('sheet-preview').hidden=false;$('read-sheet').disabled=false;$('read-status').textContent='Photo ready. For best results, crop closely around printed chord symbols.';showChords('sheet-results',[])};
-function displayExtract(text){const chords=extractChords(text);showChords('sheet-results',chords);$('read-status').textContent=chords.length?`Found ${chords.length} chord symbols. Check them against your music.`:'No chord symbols found. Try a clearer crop, or type your chord line below.'}
-$('parse-sheet').onclick=()=>displayExtract($('sheet-text').value);
+let imageUrl,selectedFile,ocrBusy=false;
+$('sheet-file').onchange=()=>{
+  selectedFile=$('sheet-file').files[0];
+  $('sheet-chart-status').textContent='Read the photo, then check the recognized text before downloading.';
+  $('sheet-text').value='';
+  if(imageUrl){URL.revokeObjectURL(imageUrl);imageUrl=null}
+  $('sheet-preview').hidden=true;$('read-sheet').disabled=true;
+  if(!selectedFile)return;
+  if(!['image/jpeg','image/png','image/webp'].includes(selectedFile.type)||selectedFile.size>15*1024*1024){$('read-status').textContent='Choose a JPG, PNG, or WebP image under 15 MB.';selectedFile=null;return}
+  imageUrl=URL.createObjectURL(selectedFile);$('sheet-preview').src=imageUrl;$('sheet-preview').hidden=false;$('read-sheet').disabled=ocrBusy;
+  $('read-status').textContent='Photo ready. Include both the words and the chord symbols in your crop.';
+};
 let ocrPromise;function loadOCR(){if(window.Tesseract)return Promise.resolve();ocrPromise??=new Promise((resolve,reject)=>{let script=document.createElement('script');script.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';script.onload=resolve;script.onerror=()=>{ocrPromise=null;script.remove();reject(new Error('Could not load photo recognition. Check your connection, or paste chord symbols below.'))};document.head.append(script)});return ocrPromise}
-$('read-sheet').onclick=async()=>{if(!selectedFile)return;$('read-sheet').disabled=true;$('read-status').textContent='Loading photo recognition…';let worker;try{await loadOCR();worker=await Tesseract.createWorker('eng',1,{logger:m=>{if(m.status)$('read-status').textContent=m.status+(m.progress?' '+Math.round(m.progress*100)+'%':'')}});const result=await worker.recognize(selectedFile);$('sheet-text').value=result.data.text;displayExtract(result.data.text)}catch(e){$('read-status').textContent=e.message||'Photo recognition failed. Try pasting chord symbols below.'}finally{if(worker)await worker.terminate();$('read-sheet').disabled=false}};
+$('read-sheet').onclick=async()=>{
+  if(!selectedFile||ocrBusy)return;
+  ocrBusy=true;const file=selectedFile;
+  $('read-sheet').disabled=true;$('sheet-file').disabled=true;$('read-status').textContent='Loading photo recognition…';let worker;
+  try{
+    await loadOCR();worker=await Tesseract.createWorker('eng',1,{logger:m=>{if(m.status)$('read-status').textContent=m.status+(m.progress?' '+Math.round(m.progress*100)+'%':'')}});
+    await worker.setParameters({preserve_interword_spaces:'1'});
+    const result=await worker.recognize(file);
+    $('sheet-text').value=result.data.text;
+    $('read-status').textContent='Text recognized. Check spelling and chord placement against your photo.';
+    $('sheet-text').dispatchEvent(new Event('chart-ready'));
+  }catch(error){$('read-status').textContent=error.message||'Photo recognition failed. You can paste your chart below.'}
+  finally{
+    try{if(worker)await worker.terminate()}finally{ocrBusy=false;$('sheet-file').disabled=false;$('read-sheet').disabled=!selectedFile}
+  }
+};
 document.addEventListener('visibilitychange',()=>{if(document.hidden){stopMic();stopMetro();stopStrum()}});

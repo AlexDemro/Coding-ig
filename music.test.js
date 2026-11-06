@@ -55,7 +55,7 @@ test('tuner responds immediately, resumes audio before permission, handles denia
   for(const time of [80,160,240,320])animation(time);
   assert.equal(element('pitch-note').textContent,'A2');assert.ok(element('input-level').value>0);assert.match(element('input-level-text').textContent,/Note detected/);
   stringButton.onclick();for(const time of [400,480,560])animation(time);
-  assert.equal(element('pitch-note').textContent,'E2');assert.match(element('tune-status').textContent,/Loosen/);
+  assert.equal(element('pitch-note').textContent,'E2');assert.match(element('tune-status').textContent,/loosen/i);
   await element('mic').onclick();assert.equal(stopped,2);
   window.isSecureContext=false;await element('mic').onclick();assert.match(element('tune-status').textContent,/HTTPS or localhost/);
   window.isSecureContext=true;window.webkitAudioContext=window.AudioContext;delete window.AudioContext;
