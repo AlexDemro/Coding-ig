@@ -1,4 +1,4 @@
-import './charts-ui.js';
+import './reader-ui.js';
 import {GuitarTuner,TuningGuide,microphoneConstraints} from './tuner.js';
 import {createGuitar} from './guitar-audio.js';
 import {notes,transpose,extractChords} from './music.js';
@@ -151,35 +151,6 @@ $('mic').onclick=async()=>{
     $('pitch-detail').textContent='On Windows: Settings → Privacy & security → Microphone → allow desktop apps to access your microphone.';
   }finally{
     if(generation===micGeneration){micPending=false;clearTimeout(micWatchdog);$('mic').setAttribute('aria-busy','false')}
-  }
-};
-let imageUrl,selectedFile,ocrBusy=false;
-$('sheet-file').onchange=()=>{
-  selectedFile=$('sheet-file').files[0];
-  $('sheet-chart-status').textContent='Read the photo, then check the recognized text before downloading.';
-  $('sheet-text').value='';
-  if(imageUrl){URL.revokeObjectURL(imageUrl);imageUrl=null}
-  $('sheet-preview').hidden=true;$('read-sheet').disabled=true;
-  if(!selectedFile)return;
-  if(!['image/jpeg','image/png','image/webp'].includes(selectedFile.type)||selectedFile.size>15*1024*1024){$('read-status').textContent='Choose a JPG, PNG, or WebP image under 15 MB.';selectedFile=null;return}
-  imageUrl=URL.createObjectURL(selectedFile);$('sheet-preview').src=imageUrl;$('sheet-preview').hidden=false;$('read-sheet').disabled=ocrBusy;
-  $('read-status').textContent='Photo ready. Include both the words and the chord symbols in your crop.';
-};
-let ocrPromise;function loadOCR(){if(window.Tesseract)return Promise.resolve();ocrPromise??=new Promise((resolve,reject)=>{let script=document.createElement('script');script.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';script.onload=resolve;script.onerror=()=>{ocrPromise=null;script.remove();reject(new Error('Could not load photo recognition. Check your connection, or paste chord symbols below.'))};document.head.append(script)});return ocrPromise}
-$('read-sheet').onclick=async()=>{
-  if(!selectedFile||ocrBusy)return;
-  ocrBusy=true;const file=selectedFile;
-  $('read-sheet').disabled=true;$('sheet-file').disabled=true;$('read-status').textContent='Loading photo recognition…';let worker;
-  try{
-    await loadOCR();worker=await Tesseract.createWorker('eng',1,{logger:m=>{if(m.status)$('read-status').textContent=m.status+(m.progress?' '+Math.round(m.progress*100)+'%':'')}});
-    await worker.setParameters({preserve_interword_spaces:'1'});
-    const result=await worker.recognize(file);
-    $('sheet-text').value=result.data.text;
-    $('read-status').textContent='Text recognized. Check spelling and chord placement against your photo.';
-    $('sheet-text').dispatchEvent(new Event('chart-ready'));
-  }catch(error){$('read-status').textContent=error.message||'Photo recognition failed. You can paste your chart below.'}
-  finally{
-    try{if(worker)await worker.terminate()}finally{ocrBusy=false;$('sheet-file').disabled=false;$('read-sheet').disabled=!selectedFile}
   }
 };
 document.addEventListener('visibilitychange',()=>{if(document.hidden){stopMic();stopMetro();stopStrum()}});

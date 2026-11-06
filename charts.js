@@ -28,9 +28,10 @@ export function parseChart(source){
   }
   flush();return rows;
 }
-export function layoutChart(source,{title='My chord sheet',artist='',columns=60,perPage=18}={}){
+export function layoutChart(source,options={}){return layoutRows(parseChart(source),options)}
+export function layoutRows(rows,{title='My chord sheet',artist='',columns=60,perPage=18}={}){
   if(!Number.isInteger(columns)||columns<12||!Number.isInteger(perPage)||perPage<1)throw new Error('Invalid page layout.');
-  const rows=parseChart(source);const wrapped=[];
+  const wrapped=[];
   for(const row of rows){
     const chars=Array.from(row.lyrics),end=Math.max(chars.length,...row.chords.map(c=>c.column+count(c.text)),0);
     if(end===0){wrapped.push(row);continue}
