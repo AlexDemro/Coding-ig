@@ -10,14 +10,14 @@ Requires Node.js 18 or newer. No package installation is required.
 npm start
 ```
 
-The server listens on port 3000; set `PORT` to override it. Run `npm test` for the 30 music, tuner, and chart-layout tests.
+The server listens on port 3000; set `PORT` to override it. Run `npm test` for the 36 music, tuner, chart-layout, and song-search tests.
 
 ## Tools
 
 - Microphone tuner for standard guitar tuning. Requires microphone permission and HTTPS or localhost. Uses A4 = 440 Hz.
 - Library of 16 common chord shapes, searchable by name and family.
 - Capo converter, frets 0–12, with conversion in either direction and slash-chord support.
-- Song chord maker: turn pasted lyrics with inline chords or chord-above-lyric text into paginated PNG or SVG images. Spotify track links can be attached as references; there is no automatic Spotify lyric/chord retrieval or transcription.
+- Song chord maker: turn pasted lyrics with inline chords or chord-above-lyric text into paginated PNG or SVG images. A live title-and-artist search fills in song details from the public Apple Music/iTunes catalog, with an Open in Spotify search link. There is no automatic lyric/chord retrieval or transcription.
 - Photo reader: recognize printed lyrics and chord symbols using Tesseract.js 5, correct the recognized text and spacing, and export a new chord-over-lyric image. Images stay in the browser; the OCR library, worker, and English model require network access. Staff notes cannot be converted to chords, and missing lyrics are never invented. Pasted charts and image export work offline after the site loads.
 - Metronome with adjustable tempo, time signature, downbeat accent, and tap tempo.
 - Four animated strumming patterns with adjustable playback speed; audio uses synthesized plucked guitar strings with directional strums and a choice of G, D, Em, or C.
@@ -48,12 +48,20 @@ The tuner uses a segmented semicircular gauge with a large note display and thre
 
 ## Lyric-and-chord images
 
-Open **Song chord maker** from the sidebar or the mobile **Tools** menu. Enter a title and optional artist or capo instructions, then paste a chart. To anchor a chord above a specific word, put it in brackets: `[G]Hello [C]there`. Existing charts with a chord line directly above a lyric line are also accepted, preserving their spaces. Section headings such as `[Verse]` are kept. Use **Create chord sheet image** to preview and download each page as PNG or SVG. An original example is provided. Editing the source clears old previews so downloads cannot silently use stale content.
+Open **Song chord maker** from the sidebar or the mobile **Tools** menu. Type a song title, artist, or both into the search bar. After two characters, suggestions update as you type (with a 350 ms debounce). Choose a result using the mouse, touch, or arrow keys and Enter. Its title and artist are filled in automatically. Use the expandable custom-song section for original work. Then paste a chart. To anchor a chord above a specific word, put it in brackets: `[G]Hello [C]there`. Existing charts with a chord line directly above a lyric line are also accepted, preserving their spaces. Section headings such as `[Verse]` are kept. Use **Create chord sheet image** to preview and download each page as PNG or SVG. An original example is provided. Editing the source clears old previews so downloads cannot silently use stale content.
 
-For a photo, open **Sheet music reader**, upload a JPG/PNG/WebP (up to 15 MB), and choose **Read lyrics & chords**. Recognized text generates an image when it contains both lyrics and chord symbols. Review and fix the text or use bracketed chords to correct placement, then regenerate. This is text OCR, not staff-note recognition or harmonic analysis. Spotify links are validated track references only; they do not import song data.
+For a photo, open **Sheet music reader**, upload a JPG/PNG/WebP (up to 15 MB), and choose **Read lyrics & chords**. Recognized text generates an image when it contains both lyrics and chord symbols. Review and fix the text or use bracketed chords to correct placement, then regenerate. This is text OCR, not staff-note recognition or harmonic analysis. Search results provide metadata only. The Spotify button opens a Spotify search; it is not a verified Spotify track match and does not import lyrics or chords.
 
 The brand is **FretMate.app**. No domain has been registered, purchased, or deployed by this change; domain availability is unverified.
 
 ## Browser checks
 
 With Node.js 22+ and Chromium installed, start a server on port 3001 (`PORT=3001 npm start` on Unix, or set `$env:PORT=3001` in PowerShell), then run `npm run test:browser` in another terminal. Set `SITE_URL` for a different server and `CHROMIUM_BIN` for your Chromium/Chrome executable. The default executable is `/usr/bin/chromium`. Screenshots and downloads go to a unique directory under `/tmp` by default; set `BROWSER_TEST_OUTPUT` to a fresh writable directory on other operating systems. The browser test stubs photo OCR to verify the application's upload-to-export flow; it does not download or validate the external OCR model.
+
+## Live song search
+
+`GET /api/songs?q=…` searches the public Apple Music/iTunes catalog at `https://itunes.apple.com/search`. No API key or Spotify login is needed. This is a public music-catalog search, not the authenticated Spotify catalog: availability can vary by region and some Spotify tracks may be absent. The title and artist are filled automatically after a result is chosen. Lyrics and chords are not retrieved.
+
+The endpoint bounds queries to 120 characters and results to eight suggestions, ranks combined title/artist tokens, deduplicates releases, caches results for five minutes, coalesces concurrent identical searches, and times out upstream requests after seven seconds. The UI cancels outdated requests and ignores late responses; it supports empty results, provider/network errors, Escape dismissal, keyboard selection, and touch. Node versions supporting `http.setGlobalProxyFromEnv` use the environment's configured proxy.
+
+Network access to **itunes.apple.com** is required on the server. In this managed cloud environment, the initial live lookup was blocked by the outbound policy. The domain addition was saved in the environment configuration draft, but requires review/save and publication before cloud access can be claimed. Browser autocomplete tests use a catalog fixture; search-service tests exercise ranking, response validation, caching, request coalescing and provider failures. A successful real catalog query remains unverified in this cloud instance.

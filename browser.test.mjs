@@ -38,6 +38,27 @@ try{
  const file=downloads.find(x=>x.endsWith('.png'));assert.ok(file,'PNG file downloaded');const png=await readFile(dir+'/downloads/'+file);assert.equal(png.subarray(1,4).toString(),'PNG');assert.equal(png.readUInt32BE(16),1240);assert.equal(png.readUInt32BE(20),1754);
  await evaluate("document.getElementById('song-title').value='Changed';document.getElementById('song-title').dispatchEvent(new Event('input'))");
  assert.equal(await evaluate("document.querySelectorAll('#song-pages .chart-page').length"),0);
+ // Autocomplete uses a deterministic catalog response; outbound catalog
+ // access is checked separately and may be restricted by the environment.
+ await evaluate(`window.originalFetch=window.fetch;window.songRequests=[];window.fetch=async(url,options)=>{if(String(url).startsWith('/api/songs?')){const query=new URL(url,location.origin).searchParams.get('q');window.songRequests.push(query);if(query==='fail')return {ok:false,json:async()=>({error:'Catalog temporarily unavailable'})};if(query==='nothing')return {ok:true,json:async()=>({results:[]})};const result={id:'2',title:'Dracula',artist:'Tame Impala',album:'Test album',spotifyUrl:'https://open.spotify.com/search/Dracula%20Tame%20Impala'};if(query==='slow')await new Promise(r=>setTimeout(r,1000));return {ok:true,json:async()=>({results:[{...result,title:query==='slow'?'Old result':'Dracula'}]})}}return window.originalFetch(url,options)};document.querySelector('[data-tab="song-maker"]').click();const search=document.getElementById('song-search');search.value='D';search.dispatchEvent(new Event('input'))`);
+ await new Promise(r=>setTimeout(r,450));assert.equal(await evaluate('window.songRequests.length'),0);
+ await evaluate("{const input=document.getElementById('song-search');input.focus();for(const q of ['Dr','Dra','Dracula Tame Impala']){input.value=q;input.dispatchEvent(new Event('input'))}}");
+ for(let i=0;i<40;i++){if(await evaluate("document.getElementById('song-search').getAttribute('aria-expanded')==='true'"))break;await new Promise(r=>setTimeout(r,50))}
+ assert.equal(await evaluate('window.songRequests.length'),1,'debounced rapid keystrokes');
+ assert.match(await evaluate("document.getElementById('song-suggestions').textContent"),/Dracula.*Tame Impala/);
+ const autocomplete=await send('Page.captureScreenshot',{format:'png'});await writeFile(dir+'/song-autocomplete.png',Buffer.from(autocomplete.data,'base64'));
+ await evaluate("{const input=document.getElementById('song-search');input.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}))}");
+ assert.equal(await evaluate("document.getElementById('song-title').value"),'Dracula');assert.equal(await evaluate("document.getElementById('song-artist').value"),'Tame Impala');
+ assert.equal(await evaluate("document.getElementById('selected-song').hidden"),false);
+ assert.match(await evaluate("document.getElementById('selected-song-spotify').href"),/open.spotify.com/);
+ await evaluate("{document.getElementById('change-song').click();const input=document.getElementById('song-search');input.value='slow';input.dispatchEvent(new Event('input'))}");
+ await new Promise(r=>setTimeout(r,400));
+ await evaluate("{const input=document.getElementById('song-search');input.value='Dracula';input.dispatchEvent(new Event('input'))}");
+ await new Promise(r=>setTimeout(r,1200));
+ assert.ok(!await evaluate("document.getElementById('song-suggestions').textContent.includes('Old result')"),'late response cannot replace latest results');
+ await evaluate("{const input=document.getElementById('song-search');input.value='nothing';input.dispatchEvent(new Event('input'))}");await new Promise(r=>setTimeout(r,500));assert.match(await evaluate("document.getElementById('song-search-status').textContent"),/No matches/);
+ await evaluate("{const input=document.getElementById('song-search');input.value='fail';input.dispatchEvent(new Event('input'))}");await new Promise(r=>setTimeout(r,500));assert.match(await evaluate("document.getElementById('song-search-status').textContent"),/unavailable/);
+ await evaluate('window.fetch=window.originalFetch');
  // Photo OCR is simulated to test the application pipeline, not the external OCR model.
  await evaluate(`window.Tesseract={createWorker:async()=>({setParameters:async()=>{},recognize:async()=>({data:{text:'G          C\\nAn original practice line\\nAm         D\\nAnother original line'}}),terminate:async()=>{}})};document.querySelector('[data-tab="reader"]').click();const transfer=new DataTransfer();transfer.items.add(new File(['test'],'chart.png',{type:'image/png'}));const input=document.getElementById('sheet-file');input.files=transfer.files;input.dispatchEvent(new Event('change'));document.getElementById('read-sheet').click()`);
  for(let i=0;i<100;i++){if(await evaluate("document.querySelectorAll('#sheet-pages .chart-page').length>0"))break;await new Promise(r=>setTimeout(r,50))}
@@ -52,6 +73,6 @@ try{
  assert.ok(await evaluate('document.documentElement.scrollWidth<=window.innerWidth'),'no mobile horizontal overflow');
  const mobile=await send('Page.captureScreenshot',{format:'png'});await writeFile(dir+'/tuner-mobile.png',Buffer.from(mobile.data,'base64'));
  assert.equal(errors.length,0,JSON.stringify(errors));
- console.log('Browser checks passed: real Web Audio A2 detection and arc feedback, desktop/mobile navigation, 13-segment tuner, chart preview, real PNG download (1240 × 1754), edit invalidation, simulated photo-to-chart pipeline.');
+ console.log('Browser checks passed: autocomplete debounce/selection/errors/stale-response handling (mock catalog), real Web Audio A2 detection and arc feedback, desktop/mobile navigation, 13-segment tuner, chart preview, real PNG download (1240 × 1754), edit invalidation, simulated photo-to-chart pipeline.');
  console.log('Screenshots: '+dir+'/tuner-desktop.png; '+dir+'/tuner-mobile.png');
 }finally{ws?.close();browser.kill('SIGTERM')}

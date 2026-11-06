@@ -1,4 +1,5 @@
-import {layoutChart,chartSVG,chartSummary,spotifyTrack} from './charts.js';
+import {initSongPicker} from './song-picker.js';
+import {layoutChart,chartSVG,chartSummary} from './charts.js';
 const $=id=>document.getElementById(id);
 const example='[Verse]\n[G]Take a little breath, let the [D]day roll by\n[Em]Find a little melody [C]under the sky\n\n[Chorus]\n[G]One more chord and a [D]little more time\n[Em]Your own rhythm, [C]your own rhyme';
 export function initCharts(){
@@ -40,19 +41,23 @@ export function initCharts(){
     }catch(error){$(prefix+'-chart-status').textContent=error.message}
   }
   $('song-generate').onclick=()=>generate('song');$('sheet-generate').onclick=()=>generate('sheet');
-  $('song-example').onclick=()=>{$('song-text').value=example;$('song-title').value='A little more music';$('song-artist').value='Original practice example';stale('song')};
+  function selectSong(song){
+    $('song-title').value=song.title;$('song-artist').value=song.artist;
+    $('selected-song-title').textContent=song.title;$('selected-song-artist').textContent=song.artist;
+    $('selected-song-spotify').href=song.spotifyUrl||'https://open.spotify.com/search/'+encodeURIComponent(song.title+' '+song.artist);
+    $('selected-song').hidden=false;stale('song');
+  }
+  const picker=initSongPicker({onSelect:selectSong,onClear(){
+    $('song-title').value='';$('song-artist').value='';$('selected-song').hidden=true;stale('song');
+  }});
+  $('change-song').onclick=()=>{picker.reset();$('song-title').value='';$('song-artist').value='';$('selected-song').hidden=true;stale('song');$('song-search').focus()};
+  $('use-custom-song').onclick=()=>{picker.reset();selectSong({title:$('custom-song-title').value.trim()||'My chord sheet',artist:$('custom-song-artist').value.trim()})};
+  $('song-example').onclick=()=>{picker.reset();$('song-text').value=example;selectSong({title:'A little more music',artist:'Original practice example'})};
   for(const prefix of ['song','sheet']){
     for(const id of [prefix+'-title',prefix+'-artist',prefix==='sheet'?'sheet-text':'song-text'])$(id).addEventListener('input',()=>stale(prefix));
   }
   $('sheet-text').addEventListener('chart-ready',()=>generate('sheet'));
   $('sheet-file').addEventListener('change',()=>clear('sheet'));
-  $('song-spotify').addEventListener('input',()=>{$('spotify-reference').replaceChildren();$('spotify-status').textContent=''});
-  $('spotify-add').onclick=()=>{
-    const id=spotifyTrack($('song-spotify').value);$('spotify-reference').replaceChildren();
-    if(!id){$('spotify-status').textContent='Paste a Spotify track link (open.spotify.com/track/…) or track URI.';return}
-    const link=document.createElement('a');link.href='https://open.spotify.com/track/'+id;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Open this song in Spotify ↗';
-    $('spotify-reference').append(link);
-    $('spotify-status').textContent='Spotify reference added. Paste the lyrics and chords below to create your image. This does not import or transcribe the song.';
-  };
+
 }
 document.addEventListener('DOMContentLoaded',initCharts,{once:true});
