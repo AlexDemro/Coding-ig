@@ -1,0 +1,4 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {transpose,extractChords,detectPitch} from './music.js';
+test('capo conversion transposes roots and bass notes in both directions',()=>{assert.equal(transpose('D/F#',2),'E/G#');assert.equal(transpose('Bbmaj7',-3),'Gmaj7');assert.equal(transpose('Am',12),'Am');assert.equal(transpose('C',-1),'B')});
+test('chord extraction accepts symbols and rejects ordinary words',()=>assert.deepEqual(extractChords('Intro: | Am F C G7 | D/F# hello Amplitude'),['Am','F','C','G7','D/F#']));
+test('tuner recognizes standard string frequencies and silence',()=>{const rate=48000;for(const hz of [82.41,110,146.83,196,246.94,329.63,440]){const input=Float32Array.from({length:4096},(_,i)=>.3*Math.sin(2*Math.PI*hz*i/rate));const pitch=detectPitch(input,rate);assert.ok(pitch&&Math.abs(1200*Math.log2(pitch/hz))<20,`${hz} detected as ${pitch}`)}assert.equal(detectPitch(new Float32Array(4096),rate),null)});
