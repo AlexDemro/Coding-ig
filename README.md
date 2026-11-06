@@ -30,3 +30,13 @@ Music logic is covered by Node tests. The server and asset routes have been chec
 ## Tuner troubleshooting
 
 Run `npm start` and open `http://localhost:3000` on your computer, or use an HTTPS deployment. Do not double-click `index.html`. Allow microphone access in the browser prompt or address-bar permissions menu. If you use Windows, check Settings → Privacy & security → Microphone and enable microphone access for desktop apps. An embedded preview can block microphone access; open the website directly in your browser. The tuner shows its permission state immediately, and pending requests can be canceled.
+
+## Adaptive guitar tuner
+
+The tuner uses YIN with cumulative normalized differences, sub-sample interpolation, and checks for dominant second harmonics. Its chromatic analysis range is 50–1000 Hz, covering E2–E4, drop D, down-tunings, and higher fretted notes; A4 is 440 Hz. An 8192-sample capture window is downsampled for bounded mobile processing cost. Analysis runs about every 70 ms.
+
+Quiet inputs receive bounded analysis normalization (up to 64×). This never boosts microphone playback: input is connected to a silent output. An adaptive noise floor is learned only from unpitched frames, with an absolute minimum signal gate and periodicity-confidence checks. Random sound cannot pass merely by being made louder. Three consistent frames are required to acquire a note; median and cents-domain exponential smoothing stabilize the display. Outliers are withheld, genuine string changes reacquire, and silence clears old readings. A live meter measures the original signal in dBFS, independent of normalization. Weak, unsettled, and noisy inputs show distinct feedback.
+
+Speech processing is requested off using optional/ideal echo cancellation, noise suppression, and automatic gain constraints, subject to browser/device support. AudioContext and the Safari webkitAudioContext fallback are supported; audio is resumed in the user gesture before permission is awaited. Browser microphone permission and HTTPS/localhost remain necessary. The site cannot override hardware limits or OS-level microphone denial, and a periodic background tone or voice can resemble a musical note.
+
+`npm test` includes deterministic synthetic quiet, decaying, harmonic-rich, noisy, alternate-tuning and 44.1/48/96 kHz inputs; broadband and low-pass noise; silence/transients; DC offsets; octave outliers, reacquisition and smoothing; microphone permission/cancellation; and input meter updates. These tests do not substitute for listening and physical microphone checks on Chrome/Safari and desktop/mobile devices.

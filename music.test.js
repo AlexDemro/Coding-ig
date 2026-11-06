@@ -32,12 +32,12 @@ test('tuner responds immediately, resumes audio before permission, handles denia
  function element(id){if(!elements.has(id))elements.set(id,{value:defaults[id]??'',textContent:'',style:{},classList:{remove(){},toggle(){}},setAttribute(){},add(){},addEventListener(){},replaceChildren(){}});return elements.get(id)}
  const old={document:globalThis.document,window:globalThis.window,Option:globalThis.Option,requestAnimationFrame:globalThis.requestAnimationFrame,cancelAnimationFrame:globalThis.cancelAnimationFrame};
  const originalNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator');
- const calls=[];let request;
+ const calls=[];let request,animation;
  const graphNode=()=>({connect(){calls.push('connect')},disconnect(){}});
- const ctx={state:'suspended',sampleRate:48000,destination:{},resume(){calls.push('resume');this.state='running';return Promise.resolve()},createMediaStreamSource(){calls.push('source');return graphNode()},createAnalyser(){return {...graphNode(),getFloatTimeDomainData(){}}},createGain(){return {...graphNode(),gain:{value:1}}}};
+ const ctx={state:'suspended',sampleRate:48000,destination:{},resume(){calls.push('resume');this.state='running';return Promise.resolve()},createMediaStreamSource(){calls.push('source');return graphNode()},createAnalyser(){return {...graphNode(),getFloatTimeDomainData(samples){for(let i=0;i<samples.length;i++)samples[i]=.0002*Math.sin(2*Math.PI*110*i/48000)}}},createGain(){return {...graphNode(),gain:{value:1}}}};
  globalThis.document={getElementById:element,querySelectorAll:()=>[],createElement:()=>({}),addEventListener(){}};
  globalThis.window={isSecureContext:true,AudioContext:class{constructor(){return ctx}}};
- globalThis.Option=class{};globalThis.requestAnimationFrame=()=>1;globalThis.cancelAnimationFrame=()=>{};
+ globalThis.Option=class{};globalThis.requestAnimationFrame=callback=>{animation=callback;return 1};globalThis.cancelAnimationFrame=()=>{};
  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{mediaDevices:{getUserMedia(){calls.push('permission');return new Promise((resolve,reject)=>{request={resolve,reject}})}}}});
  try{
   await import('./app.js');
@@ -51,8 +51,15 @@ test('tuner responds immediately, resumes audio before permission, handles denia
   assert.equal(stopped,1);
   pending=element('mic').onclick();request.resolve(stream);await pending;
   assert.equal(element('mic').textContent,'Stop listening');assert.ok(calls.includes('source'));
+  for(const time of [80,160,240,320])animation(time);
+  assert.equal(element('pitch-note').textContent,'A2');assert.ok(element('input-level').value>0);assert.match(element('input-level-text').textContent,/Note detected/);
   await element('mic').onclick();assert.equal(stopped,2);
   window.isSecureContext=false;await element('mic').onclick();assert.match(element('tune-status').textContent,/HTTPS or localhost/);
+  window.isSecureContext=true;window.webkitAudioContext=window.AudioContext;delete window.AudioContext;
+  await import('./app.js?safari-fallback');
+  pending=element('mic').onclick();request.resolve(stream);await pending;
+  for(const time of [80,160,240,320])animation(time);
+  assert.equal(element('pitch-note').textContent,'A2');await element('mic').onclick();
  }finally{
   for(const [key,value] of Object.entries(old)){if(value===undefined)delete globalThis[key];else globalThis[key]=value}
   if(originalNavigator)Object.defineProperty(globalThis,'navigator',originalNavigator);else delete globalThis.navigator;

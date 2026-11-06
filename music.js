@@ -1,4 +1,5 @@
+import {analysePitch} from './tuner.js';
 export const notes=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 export function transpose(chord,steps){return chord.replace(/(^|\/)([A-G])([#b]?)/g,(_,prefix,n,a)=>{let i=notes.indexOf(n)+(a==='#'?1:a==='b'?-1:0);return prefix+notes[((i+steps)%12+12)%12]})}
 export function extractChords(text){return text.split(/\s+/).map(x=>x.replace(/^[|()[\],.:;]+|[|()[\],.:;]+$/g,'')).filter(x=>/^[A-G](?:#|b)?(?:(?:maj|min|m|sus|dim|aug|add)?\d*)?(?:\/[A-G](?:#|b)?)?$/.test(x))}
-export function detectPitch(samples,rate){let energy=0;for(const x of samples)energy+=x*x;if(Math.sqrt(energy/samples.length)<.012)return null;let previous=0,previousPrevious=0,foundDip=false;for(let offset=Math.floor(rate/1200);offset<Math.min(samples.length/2,Math.ceil(rate/65));offset++){let corr=0,a=0,b=0;for(let i=0;i<samples.length/2;i++){corr+=samples[i]*samples[i+offset];a+=samples[i]**2;b+=samples[i+offset]**2}const score=corr/Math.sqrt(a*b||1);if(score<.5)foundDip=true;if(foundDip&&previous>.9&&score<previous&&previous>previousPrevious){const correction=.5*(previousPrevious-score)/(previousPrevious-2*previous+score);return rate/(offset-1+correction)}previousPrevious=previous;previous=score}return null}
+export function detectPitch(samples,rate){return analysePitch(samples,rate).hz}

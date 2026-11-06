@@ -1,5 +1,6 @@
+import {GuitarTuner,microphoneConstraints} from './tuner.js';
 import {createGuitar} from './guitar-audio.js';
-import {notes,transpose,extractChords,detectPitch} from './music.js';
+import {notes,transpose,extractChords} from './music.js';
 const $=id=>document.getElementById(id);let stopMic=()=>{},stopMetro=()=>{},stopStrum=()=>{};
 function navigate(tab){stopMic();stopMetro();stopStrum();document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.id===tab));document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x.dataset.tab===tab));$('page-name').textContent=document.querySelector(`[data-tab="${tab}"] span`).textContent;window.scrollTo(0,0)}
 document.querySelectorAll('[data-tab],[data-go]').forEach(b=>b.onclick=()=>navigate(b.dataset.tab||b.dataset.go));
@@ -33,7 +34,7 @@ const patterns=[{steps:['↓','·','↓','·','↓','·','↓','·'],description
 function renderPattern(){const p=patterns[Number($('pattern').value)];$('strum-grid').innerHTML=p.steps.map((s,i)=>`<div><small>${i%2?'&':i/2+1}</small><b>${s}</b></div>`).join('');$('pattern-description').textContent=p.description}renderPattern();let strumRunning=false,strumTimer;
 stopStrum=()=>{guitar?.stop();clearInterval(strumTimer);strumRunning=false;$('strum-play').textContent='Play pattern';document.querySelectorAll('#strum-grid div').forEach(x=>x.classList.remove('on'))};$('pattern').onchange=()=>{stopStrum();renderPattern()};$('strum-tempo').oninput=()=>$('strum-tempo-label').textContent=$('strum-tempo').value+' BPM';
 $('strum-play').onclick=async()=>{if(strumRunning){stopStrum();return}try{const ctx=await getAudio();guitar??=createGuitar(ctx);strumRunning=true;let step=0,next=ctx.currentTime+.05;$('strum-play').textContent='Stop pattern';strumTimer=setInterval(()=>{while(next<ctx.currentTime+.1){const i=step%8,s=patterns[Number($('pattern').value)].steps[i];if(s!=='·')guitar.strum(next,$('strum-chord').value,s==='↑');setTimeout(()=>{if(strumRunning)document.querySelectorAll('#strum-grid div').forEach((x,j)=>x.classList.toggle('on',i===j))},Math.max(0,(next-ctx.currentTime)*1000));step++;next+=30/Number($('strum-tempo').value)}},25)}catch{$('pattern-description').textContent='Audio could not start. Try again in a browser with Web Audio support.'}};
-let stream,frame,micPending=false,micGeneration=0,micWatchdog;stopMic=()=>{micGeneration++;micPending=false;clearTimeout(micWatchdog);stream?.getTracks().forEach(t=>t.stop());stream=null;cancelAnimationFrame(frame);$('mic').textContent='Enable microphone';$('mic').setAttribute('aria-busy','false');$('tune-status').textContent='Ready when you are'};
+let stream,frame,micPending=false,micGeneration=0,micWatchdog;stopMic=()=>{micGeneration++;micPending=false;clearTimeout(micWatchdog);stream?.getTracks().forEach(t=>t.stop());stream=null;cancelAnimationFrame(frame);$('input-level').value=0;$('input-level-text').textContent='Microphone off';$('pitch-note').textContent='—';$('needle').style.left='50%';$('mic').textContent='Enable microphone';$('mic').setAttribute('aria-busy','false');$('tune-status').textContent='Ready when you are'};
 $('mic').onclick=async()=>{
   if(stream||micPending){stopMic();return}
   micPending=true;
@@ -56,7 +57,7 @@ $('mic').onclick=async()=>{
         $('pitch-detail').textContent='Allow the microphone using the icon beside the address bar. If you are in a preview, open the site directly. You can cancel and try again.';
       }
     },10000);
-    const acquired=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    const acquired=await navigator.mediaDevices.getUserMedia(microphoneConstraints(navigator.mediaDevices));
     if(generation!==micGeneration){acquired.getTracks().forEach(t=>t.stop());return}
     stream=acquired;
     let audioTimeout;
@@ -65,7 +66,8 @@ $('mic').onclick=async()=>{
     if(generation!==micGeneration)return;
     clearTimeout(micWatchdog);
     const source=ctx.createMediaStreamSource(stream),analyser=ctx.createAnalyser();
-    analyser.fftSize=4096;
+    analyser.fftSize=8192;
+    analyser.smoothingTimeConstant=0;
     source.connect(analyser);
     // Keep the graph processing without playing microphone sound back.
     const silent=ctx.createGain();silent.gain.value=0;
@@ -76,7 +78,32 @@ $('mic').onclick=async()=>{
     $('mic').textContent='Stop listening';
     $('tune-status').textContent='Listening… pluck one string';
     $('pitch-detail').textContent='Microphone connected. Play one clear note.';
-    let last=0;function tick(time){if(!stream)return;if(time-last>130){last=time;analyser.getFloatTimeDomainData(samples);const hz=detectPitch(samples,ctx.sampleRate);if(hz){const midi=Math.round(69+12*Math.log2(hz/440)),ideal=440*2**((midi-69)/12),cents=1200*Math.log2(hz/ideal);$('pitch-note').textContent=notes[(midi%12+12)%12]+(Math.floor(midi/12)-1);$('pitch-detail').textContent=`${hz.toFixed(1)} Hz · ${Math.round(cents)>0?'+':''}${Math.round(cents)} cents`;$('tune-status').textContent=Math.abs(cents)<6?'You’re in tune':cents<0?'A little flat — tighten the string':'A little sharp — loosen the string';$('needle').style.left=`${Math.max(0,Math.min(100,50+cents))}%`}else{$('tune-status').textContent='Listening… pluck one string';$('pitch-note').textContent='—';$('pitch-detail').textContent='Let the note ring clearly.'}}frame=requestAnimationFrame(tick)}frame=requestAnimationFrame(tick)
+    const tuner=new GuitarTuner();
+    let last=0;
+    function tick(time){
+      if(!stream)return;
+      if(time-last>=70){
+        last=time;
+        analyser.getFloatTimeDomainData(samples);
+        const reading=tuner.process(samples,ctx.sampleRate,time);
+        $('input-level').value=reading.level;
+        $('input-level-text').textContent=`${Math.round(reading.db)} dB · ${reading.status==='locked'?'Note detected':reading.status==='settling'?'Finding pitch':reading.status==='weak'?'Very quiet':'Background sound'}`;
+        if(reading.hz){
+          const midi=Math.round(69+12*Math.log2(reading.hz/440)),ideal=440*2**((midi-69)/12),cents=1200*Math.log2(reading.hz/ideal);
+          $('pitch-note').textContent=notes[(midi%12+12)%12]+(Math.floor(midi/12)-1);
+          $('pitch-detail').textContent=`${reading.hz.toFixed(1)} Hz · ${Math.round(cents)>0?'+':''}${Math.round(cents)} cents`;
+          $('tune-status').textContent=Math.abs(cents)<5?'You’re in tune':cents<0?'A little flat — tighten the string':'A little sharp — loosen the string';
+          $('needle').style.left=`${Math.max(0,Math.min(100,50+cents))}%`;
+        }else{
+          $('pitch-note').textContent='—';$('needle').style.left='50%';
+          $('tune-status').textContent=reading.status==='weak'?'Signal too weak — pluck a string again':reading.status==='settling'?'Finding your note…':'Listening for a clear guitar note…';
+          $('pitch-detail').textContent=reading.status==='weak'?'Sensitivity adjusts automatically. Let one string ring; move the guitar a little closer if needed.':reading.status==='settling'?'Let the string ring while the reading settles.':'Background sound detected. Mute the other strings and pluck one string at a time.';
+        }
+      }
+      frame=requestAnimationFrame(tick);
+    }
+    frame=requestAnimationFrame(tick);
+
   }catch(e){
     if(generation!==micGeneration)return;
     stopMic();
