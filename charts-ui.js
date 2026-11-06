@@ -11,9 +11,9 @@ async function makePNG(svg){
   return await new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('The image could not be saved. Please try again.')),'image/png'));
  }finally{URL.revokeObjectURL(url)}
 }
-export async function renderSheetImages(rows){
+export async function renderSheetImages(rows,metadata={}){
  clearSheetImages();const current=revision;
- const pages=layoutRows(rows,{title:'Your guitar practice sheet'});
+ const pages=layoutRows(rows,{title:metadata.title||'Your guitar practice sheet',artist:metadata.subtitle||''});
  for(const page of pages){
   const png=await makePNG(chartSVG(page,pages.length));if(current!==revision)return false;
   const url=URL.createObjectURL(png);previews.push(url);

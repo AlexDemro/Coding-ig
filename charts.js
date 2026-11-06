@@ -32,7 +32,16 @@ export function layoutChart(source,options={}){return layoutRows(parseChart(sour
 export function layoutRows(rows,{title='My chord sheet',artist='',columns=60,perPage=18}={}){
   if(!Number.isInteger(columns)||columns<12||!Number.isInteger(perPage)||perPage<1)throw new Error('Invalid page layout.');
   const wrapped=[];
-  for(const row of rows){
+  for(const original of rows){
+    // Closely spaced note syllables can carry long chord names. Insert visual
+    // spacing so chord labels never collide while keeping their syllable anchors.
+    const row={...original,chords:[]},spaced=Array.from(original.lyrics);let shift=0,lastEnd=-2;
+    for(const chord of [...original.chords].sort((a,b)=>a.column-b.column)){
+      let column=chord.column+shift;const gap=Math.max(0,lastEnd+2-column);
+      if(gap){spaced.splice(column,0,...new Array(gap).fill(' '));column+=gap;shift+=gap}
+      row.chords.push({...chord,column});lastEnd=column+count(chord.text);
+    }
+    row.lyrics=spaced.join('');
     const chars=Array.from(row.lyrics),end=Math.max(chars.length,...row.chords.map(c=>c.column+count(c.text)),0);
     if(end===0){wrapped.push(row);continue}
     let start=0;

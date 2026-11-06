@@ -16,6 +16,7 @@ try{
  await send('Runtime.enable');await send('Page.enable');await send('Network.enable');await send('Network.setBlockedURLs',{urls:['*fonts.googleapis.com*','*fonts.gstatic.com*']});
  await send('Browser.setDownloadBehavior',{behavior:'allow',downloadPath:dir+'/downloads'});
  await send('Emulation.setDeviceMetricsOverride',{width:1365,height:1000,deviceScaleFactor:1,mobile:false});
+ await send('Page.addScriptToEvaluateOnNewDocument',{source:`window.testFetch=window.fetch;window.fetch=(url,options)=>String(url).includes('/api/score-capabilities')?Promise.resolve(new Response(JSON.stringify({available:false}),{headers:{'Content-Type':'application/json'}})):window.testFetch(url,options)`});
  await send('Page.navigate',{url:process.env.SITE_URL||'http://127.0.0.1:3001/'});
  for(let i=0;i<100;i++){if(await evaluate("document.readyState==='complete' && typeof document.getElementById('sheet-file')?.onchange==='function'"))break;await new Promise(r=>setTimeout(r,100))}
  assert.equal(await evaluate('document.title'),'FretMate — Find your rhythm');
@@ -46,9 +47,14 @@ try{
  await evaluate("window.uploadPhoto('bad.png')");
  for(let i=0;i<100;i++){if(await evaluate("!document.getElementById('sheet-retry').hidden"))break;await new Promise(r=>setTimeout(r,50))}
  assert.equal(await evaluate("document.querySelectorAll('#sheet-pages .chart-page').length"),0,'unreadable photo clears old image');
- assert.match(await evaluate("document.getElementById('read-status').textContent"),/couldn’t find/);
+ assert.match(await evaluate("document.getElementById('read-status').textContent"),/Staff-note recognition is not enabled/);
  await evaluate("window.uploadPhoto('slow.png')");await new Promise(r=>setTimeout(r,70));await evaluate("window.uploadPhoto('chart.png')");
  await new Promise(r=>setTimeout(r,800));assert.equal(await evaluate("document.querySelectorAll('#sheet-pages .chart-page').length"),1,'replacing an in-flight photo cannot append stale images');
+ // Native-recognition response is a fixture here; a separate HTTP test runs Audiveris itself.
+ await evaluate(`window.fetch=(url,options)=>{const target=String(url);if(target.includes('/api/score-capabilities'))return Promise.resolve(new Response(JSON.stringify({available:true})));if(target.endsWith('/api/score'))return Promise.resolve(new Response(JSON.stringify({id:'fixture-score'}),{status:202}));if(target.includes('/api/score/fixture-score'))return Promise.resolve(new Response(JSON.stringify({state:'done',result:{title:'Instrumental test',subtitle:'Instrumental chord guide · no lyrics in score',lyrical:false,rows:[{lyrics:'Measure 1',chords:[],section:true},{lyrics:'beat 1      beat 2',chords:[{text:'G',column:0},{text:'D',column:12}]}]}})));return window.testFetch(url,options)};window.uploadPhoto('score.png')`);
+ for(let i=0;i<100;i++){if(await evaluate("document.getElementById('read-status').textContent.includes('Instrumental chord guide ready')"))break;await new Promise(r=>setTimeout(r,50))}
+ assert.match(await evaluate("document.getElementById('read-status').textContent"),/Instrumental chord guide ready/);
+ assert.equal(await evaluate("document.querySelectorAll('#sheet-pages img').length"),1,'instrumental notation produces an image without invented lyrics');
  await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
  await evaluate("document.getElementById('menu-toggle').click()");
  assert.equal(await evaluate("document.getElementById('menu-toggle').getAttribute('aria-expanded')"),'true');

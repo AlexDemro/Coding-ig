@@ -1,61 +1,88 @@
 # FretMate
 
-A responsive guitar practice studio with a dependency-free Node server. The chosen website domain is **fretmate.online**. Repository changes do not configure Hostinger or deploy the domain.
+Guitar practice tools for **fretmate.online**: tuner, chord library, capo converter, photo reader, metronome, and strumming patterns. The Song chord maker/search feature remains removed.
 
-## Run
+## Run locally
 
-Requires Node.js 18 or newer. No dependency installation is needed.
-
-```sh
-npm start
-```
-
-The server listens on port 3000; set `PORT` to override it. Open `http://localhost:3000` locally. Use HTTPS for a hosted site, particularly for microphone access.
-
-## Tools
-
-- **Guitar tuner:** segmented semicircle, large note display, explicit tuning instructions, standard-string selection, and chromatic Auto mode. YIN detects 50–1000 Hz with bounded sensitivity, noise gating, confidence checks, median filtering, and smoothing. Microphone speech processing is requested off where supported. A live meter shows input level. Requires browser microphone permission and HTTPS or localhost.
-- **Chord library:** 16 common guitar shapes with search and chord-family filters.
-- **Capo converter:** fret 0–12 conversion in either direction, including slash chords.
-- **Sheet music reader:** upload a photo of a printed lyric-and-chord chart and automatically receive downloadable PNG images with chords above the lyrics. There is no text editor or code output. OCR uses Tesseract.js 5, loaded online; images are processed locally in the browser. It cannot interpret staff notes, infer harmonies, or invent missing lyrics. Check OCR against your original.
-- **Metronome:** tempo, beats per bar, accented downbeat, and tap tempo.
-- **Strumming patterns:** four patterns with directional synthesized guitar strums, adjustable tempo, and G/D/Em/C practice chords.
-
-The Song chord maker feature, song search, Spotify integration, automatic chart APIs, and GuitarParty adapter have been removed. No song-provider API keys or catalog services are required.
-
-## Photo-to-image reader
-
-Open **Sheet music reader**, upload a clear JPG, PNG, or WebP up to 15 MB, and processing starts automatically. The result is an actual PNG image preview and **Download image** link for each page. There are no lyric/chord entry fields, code examples, raw OCR output, or SVG export controls. Uploading another photo clears the previous output, cancels obsolete processing, and prevents late results from replacing the newer image. Unreadable photos show a brief explanation and a retry button.
-
-The photo must already contain printed lyrics and chord names. This is text recognition, not optical staff-note recognition or a harmonic-arrangement engine. Staff-only scores, lyrics without chords, and chord-only photos are rejected rather than used to fabricate an arrangement. OCR can still make mistakes; compare the image against your original before playing.
-
-Tesseract.js 5 runs locally in the browser, including automatic orientation detection. Its English model loads from the official `@tesseract.js-data/eng` package on jsDelivr. No uploaded image is sent to an external image-processing API. Word bounding boxes, where available, align recognized chords to the nearest lyric word; text-based layout is a fallback. Low-confidence chord guesses and unrelated distant text are rejected. The internet is required for the first library/model download.
-
-## Browser-tab icon
-
-The website includes the same green natural-sign (♮) logo used beside the FretMate name as SVG, multi-size ICO, PNG, and an Apple touch icon. The server supplies the correct image MIME types. The header and tab share the same SVG asset, with versioned links to refresh the old F icon. Browsers can cache old favicons; a hard refresh, new tab, or clearing site data may be needed after updating the deployed files. The Hostinger domain is **fretmate.online**; GitHub updates do not deploy it.
-
-## Windows: port already in use
-
-`EADDRINUSE` means another process already uses the requested port. Usually an older FretMate server is still running. Stop that copy with Ctrl+C in its Command Prompt window, or run the following in the new window:
+Use Node.js 22 or newer:
 
 ```cmd
-set PORT=3001
+npm install
 npm start
 ```
 
-Then open `http://localhost:3001`. Leave the terminal open. If 3001 is also busy, choose another unused port. The server now reports this situation with a readable message instead of an unhandled stack trace.
+Open `http://localhost:3000`. To replace an older running copy, stop it with Ctrl+C, then start from the newly extracted folder. If the port is occupied, `set PORT=3001` in Windows Command Prompt selects another port. Leave the terminal open.
 
-## Tuner notes
+## Two photo-reading paths
 
-A4 is 440 Hz. Three consistent frames acquire a note. Median and cents-domain smoothing stabilize pitch; short dropouts briefly retain a clearly labeled last note. In-tune hysteresis reduces flicker, and selecting a string keeps the target fixed. Voice and periodic room tones can resemble musical notes; the tuner cannot identify the instrument perfectly or override microphone hardware/OS access restrictions.
+Upload a clear JPG, PNG, or WebP under 15 MB. There is no text editor and the output is a downloadable PNG image.
 
-If the tuner cannot start, open the site directly over HTTPS or localhost and allow microphone access in the browser's address-bar permissions menu. Audio resumes within the initial user gesture, with a Safari AudioContext fallback. Audio and recording stop when changing tools or hiding the browser tab.
+- **Printed lyric/chord charts:** browser-based Tesseract OCR preserves the existing chord names and words. This path also works without a notation backend. Initial OCR/library/model downloads need internet access.
+- **Staff notation:** an installed Audiveris engine reads notes, rests, voices, key/time signatures, and lyric syllables into MusicXML. FretMate then builds a **suggested** guitar accompaniment. Recognized lyric syllables receive chords above the words; instrumental scores receive a measure-and-beat chord guide without invented lyrics.
+
+The staff path is real server-side recognition, not text OCR, a song catalog, or a paid lyrics API. It needs installation on the computer/server running Node. A scale or melody does not uniquely determine the original chords: the output is an arrangement, not a guaranteed transcription of the composer's harmony. Recognition can misread notes, rhythms, lyrics, and verses. Use high-resolution original scans and check the image against the score. Repeats are presented in printed order, not expanded into performance order.
+
+The provided small Minuet preview may not retain enough detail for accurate recognition even after enlargement. The attached Blessed Assurance and Minuet images have not been processed directly by the executable because the chat provides inline previews rather than readable local image files. Independent published score fixtures exercise the real engine.
+
+## One-time staff-reader setup on Windows
+
+1. Install **Audiveris 5.11.0**, using its official [Windows console installer](https://github.com/Audiveris/audiveris/releases/download/5.11.0/Audiveris-5.11.0-windowsConsole-x86_64.msi). The [official release page](https://github.com/Audiveris/audiveris/releases/tag/5.11.0) lists other platforms. The runtime is included. Never substitute unrelated Audiveris-branded sites.
+2. In the FretMate project folder, run:
+
+   ```cmd
+   npm install
+   npm run setup:omr
+   npm start
+   ```
+
+3. Setup looks for the installed executable and downloads/checksums the full English lyric model (including the legacy recognition data required by Audiveris). If the executable is installed elsewhere, set `AUDIVERIS_COMMAND` to its full path and rerun setup. For example, if that is your actual installation path:
+
+   ```cmd
+   set "AUDIVERIS_COMMAND=C:\Program Files\Audiveris\Audiveris.exe"
+   npm run setup:omr
+   npm start
+   ```
+
+The Windows installer and Node integration have not been tested on Windows here. The executable lookup supports common installer locations and an explicit path override. No API key is required. Visitors do not need Audiveris installed when the website has a working recognition backend; the server owner installs it once.
+
+On Debian/Ubuntu-compatible Linux x64, `npm run setup:omr` can download and extract the pinned official .deb without root, verify its SHA-256, configure a 2 GB maximum heap, and install the checksummed English model. Files go in `../.fretmate-tools`, outside the checkout. Set `FRETMATE_TOOLS_DIR` to override that managed location. LSTM-only browser OCR models cannot replace this native lyric model. The Linux route has been exercised in this environment. Other platforms need their official Audiveris installation and an executable path if automatic detection fails. Audiveris is a separate program with its own license; its source is at [Audiveris/audiveris](https://github.com/Audiveris/audiveris).
+
+## Hostinger shared hosting
+
+**Uploading static files to Hostinger shared hosting/Website Builder does not enable staff recognition.** That deployment needs a separately hosted, persistent Node service that can execute the installed notation engine. This repository does not provision, purchase, or deploy such a server, change DNS, or change a Hostinger plan.
+
+The static website can call a separate backend after one is deployed:
+
+1. Set the public `scoreApiBase` value in `score-config.js` to that backend's HTTPS origin. It is empty for local/same-origin Node use. Never put secrets in this file.
+2. Configure the backend environment variable `FRETMATE_ALLOWED_ORIGINS` with the exact permitted site origins, for example `https://fretmate.online,https://www.fretmate.online`. CORS does not allow arbitrary origins or credentialed cookies.
+3. Install dependencies and the notation engine on that backend, run the Node server behind HTTPS, and validate an actual score upload before announcing the feature as live.
+
+When no backend is available, the page clearly identifies the missing capability while retaining browser OCR for charts that already have printed chords. The icon and other practice tools are static assets and do not require the notation service.
+
+## Recognition API
+
+- `GET /api/score-capabilities`: whether the engine executable is available. This is a setup check, not a guarantee that a particular photo will be recognized.
+- `POST /api/score`: raw JPEG/PNG/WebP bytes with the matching Content-Type; returns a job ID.
+- `GET /api/score/:id`: real recognition-stage progress and final arrangement rows or an explicit error.
+
+The server checks file types/signatures and size, preprocesses orientation/contrast, limits image dimensions, runs one engine job at a time, enforces a three-minute process timeout, and deletes temporary uploaded images and native output after processing. Results live only in memory, expire after 15 minutes, and are bounded to 20 jobs. New uploads may receive a busy response while an older job finishes. The application does not send score images to a third-party music-recognition API. Staff processing uploads the photo to the FretMate backend itself; users should understand which backend the configured site uses.
+
+## Other tools
+
+- **Tuner:** adaptive YIN, 50–1000 Hz, standard-string selection or chromatic Auto, smoothing and in-tune hysteresis, actual input level, short labeled last-note holds, and explicit tune-up/down guidance. Requires microphone permission and HTTPS/localhost. A4 is 440 Hz.
+- **Chord library:** 16 common shapes with search and family filters.
+- **Capo converter:** frets 0–12, both conversion directions and slash chords.
+- **Metronome:** tempo, beats/bar, accented downbeats and tap tempo.
+- **Strumming:** four patterns with synthesized plucked-string down/up strokes and G/D/Em/C practice chords.
+
+Audio stops on navigation or hiding the page. The header and browser tab share the same green natural-sign (♮) SVG, with PNG, ICO and Apple-touch alternatives. Versioned icon URLs help invalidate the old F icon. Browser caches may still need a hard refresh.
 
 ## Validation
 
-Run `npm test` for 33 tests covering chord conversion, quiet and harmonic guitar notes, alternate tunings at multiple sample rates, noise rejection, stable guidance, strum synthesis, and sheet-image layout/escaping/pagination. These synthetic and simulated capture checks do not replace physical microphone and device testing.
+`npm test` runs 44 tests covering existing music tools plus MusicXML pitch/rhythm/voice parsing, chord arrangement, lyric syllables, instrumental output, MXL ZIP parsing, invalid XML, image signatures, and missing-engine behavior.
 
-For browser checks, start the site in one terminal and run `npm run test:browser` in another, with Node.js 22+ and Chromium installed. The default test URL is `http://127.0.0.1:3001/`; set `SITE_URL=http://127.0.0.1:3000` to test the default server. Set `CHROMIUM_BIN` for a different Chromium/Chrome executable. Screenshots and downloads use a unique `/tmp` directory by default; set `BROWSER_TEST_OUTPUT` to a fresh writable directory elsewhere if needed.
+`npm run test:browser` requires Chromium and Node.js 22+. Start the server on port 3001 or set `SITE_URL` to its address; `CHROMIUM_BIN` chooses another executable. Tests cover generated Web Audio input, navigation, branding, printed-chart PNG exports, failure/replacement handling, and a fixture notation-result image. OCR/native API responses are mocked in UI tests.
 
-Browser checks exercise generated Web Audio input through the tuner, navigation at desktop/mobile sizes, removal of the song-maker UI, upload-only photo processing, actual PNG previews and downloads, replacement/error handling, favicon links, and a simulated photo-to-image pipeline. Physical microphones, actual-photo recognition quality, Safari, and physical mobile devices remain unverified. The OCR model is mocked in browser UI tests. Separately, real Tesseract 5.1.1 recognition was exercised on a generated photo fixture containing original lyrics with G/C/Am/D chord labels, and the expected chord-to-word positions were recovered. That controlled fixture is not a claim about arbitrary real-world photo quality. Loading the real OCR library and model requires an internet connection. Google Fonts is optional and has system-font fallbacks.
+Separately, real Audiveris CLI and real HTTP image-upload recognition have run on official Allegretto, Hove and Ave Maria examples. The vocal example produced recognized lyric syllables and suggested chords; instrumental examples produced measure-based guides. Tests caught and fixed a legacy-language-model incompatibility and missing exported part timing metadata. Real recognition still produced some misspellings and uncertain note timing, so these results are not proof of transcription accuracy. The model incompatibility is now treated as a setup error rather than silently labeling a vocal score instrumental. This validates the installed Linux pipeline, not the exact chat images or Windows/Hostinger deployment. Physical microphones, actual iPhones, and broad photo-recognition accuracy remain unverified.
+
+To reproduce a real native-engine check against your own image, keep the server running and use `npm run test:omr -- path/to/score.png`. Add `--lyrics` for a vocal score to require recognized lyric syllables. Unlike the UI fixture tests, this uploads a real image and runs the installed Audiveris engine. It verifies usable data, not the correctness of every recognized note or inferred chord.

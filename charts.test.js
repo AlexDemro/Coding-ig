@@ -34,3 +34,9 @@ test('song size is bounded and multi-page output includes page numbering',()=>{
  const pages=layoutChart(Array.from({length:40},()=> '[G]An original line').join('\n'));
  assert.equal(pages.length,3);assert.match(chartSVG(pages[2],3),/3 \/ 3/);
 });
+
+test('adjacent lyric syllables get enough spacing for long chord labels',()=>{
+ const rows=layoutChart('[Bb]A[Gm7]ve [D]Ma[A7]ria').flatMap(page=>page.rows);
+ for(const row of rows)for(let i=1;i<row.chords.length;i++)assert.ok(row.chords[i].column>=row.chords[i-1].column+row.chords[i-1].text.length+2);
+ assert.match(rows.map(r=>r.lyrics).join(''),/A +ve/);
+});
