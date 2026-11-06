@@ -5,7 +5,7 @@ const selected={id:'2',title:'Test Song',artist:'Test Artist'};
 const chart={title:'Test Song',artist:'Test Artist',chart:'[G]Original words for this [C]test chart'};
 const response=value=>({ok:true,status:200,text:async()=>JSON.stringify(value)});
 test('an unconfigured source reports the missing dependency, never fabricates a chart',async()=>{
- const source=createChartSource({endpoint:'',fetcher:()=>{throw Error('must not fetch')}});
+ const source=createChartSource({endpoint:'',guitarPartyKey:'',fetcher:()=>{throw Error('must not fetch')}});
  await assert.rejects(source(selected),error=>error.status===503&&/not connected/.test(error.message));
 });
 test('validated song and positioned chord data are returned from a configured HTTPS source',async()=>{

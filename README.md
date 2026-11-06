@@ -10,7 +10,7 @@ Requires Node.js 18 or newer. No package installation is required.
 npm start
 ```
 
-The server listens on port 3000; set `PORT` to override it. Run `npm test` for the 40 music, tuner, chart-layout, song-search, and chart-source tests.
+The server listens on port 3000; set `PORT` to override it. Run `npm test` for the 45 music, tuner, chart-layout, song-search, and chart-source tests.
 
 ## Tools
 
@@ -72,7 +72,7 @@ The main song screen no longer asks for lyrics or chords. Select a catalog sugge
 
 The optional manual editor remains collapsed under **Optional: create an image from a chart you already have**. The photo reader remains available.
 
-**Current blocker:** no full-chart source is connected. Song catalog metadata alone cannot produce a complete, accurate lyric-and-chord image. Go reports this missing connection clearly; it no longer sends users to external chart searches. Automatic output has been exercised with test fixtures only, not a real commercial-song catalog.
+**Current blocker:** the GuitarParty provider adapter is implemented, but no GuitarParty API key is configured and live provider access has not been verified. Song catalog metadata alone cannot produce a complete, accurate lyric-and-chord image. Go reports this missing connection clearly; it no longer sends users to external chart searches. Automatic output has been exercised with test fixtures only, not a real commercial-song catalog.
 
 ### Connecting an authorized chart source
 
@@ -89,3 +89,14 @@ The endpoint receives GET query parameters `title`, `artist`, and `id` (catalog 
 ```
 
 `chart` can use inline ChordPro notation or chord lines directly above lyric lines. The adapter checks title/artist identity, response bounds, and the presence of both lyrics and chords. Wrong-song, absent, unreadable, unconfigured, and unreachable sources return clear errors. It does not scrape sites, infer harmonies, or invent words. Browser tests mock the source to check progress through image creation, missing-source errors, and removal of stale results. Connecting a real chart collection and validating its accuracy remain outstanding.
+
+## GuitarParty provider
+
+A provider-specific adapter now searches GuitarParty by title, fetches candidate chart details, checks the artist, and returns a supported plain-text chord-and-lyric body to the image renderer. The search path (`/v2/songs/?query=…`), detail path (`/v2/songs/{id}/`), and `Guitarparty-Api-Key` authentication header were checked against the checksum-verified published `guitarparty-client` package (version 1.0.2). That client is historical evidence, not verification of the current service. The adapter requires HTTPS and does not downgrade to the HTTP URL in that historical client. Response-format handling is fixture-tested and may need adjustment after the first authorized live response.
+
+1. Obtain your own GuitarParty API key through [GuitarParty developers](https://www.guitarparty.com/developers/api-key/). Current signup availability, access terms, HTTPS support, and coverage of particular songs remain unverified here because the network policy blocks official API/documentation requests.
+2. In managed environment settings, enter the key securely for the saved **GUITARPARTY_API_KEY** secret requirement. Do not paste it into chat or commit it to GitHub. Review/save the added network access for `api.guitarparty.com` and `www.guitarparty.com`, preserving `itunes.apple.com`, and publish the environment. Restart the server after credentials are available.
+3. For a local Node.js server, set the `GUITARPARTY_API_KEY` environment variable before starting. This is server-only configuration, never a browser field.
+4. Leave `SONG_CHART_ENDPOINT` unset to use GuitarParty; an explicit custom endpoint takes priority.
+
+A live lookup of **Dracula — Tame Impala** has not succeeded or been validated. Tests use constructed responses to cover routing, credential headers, matching, unsupported formats, missing songs, and provider errors. Even with a valid key, the source may not have a particular song; the app reports a missing chart rather than substituting one by a different artist. The adapter requires `objects` search results, artist metadata, and a plain-text `body` with positioned chords; HTML-only or lyrics-only results are rejected. No third-party client package is installed or executed.

@@ -1,12 +1,13 @@
+import {createGuitarPartySource} from './guitarparty-source.js';
 import {layoutChart,chartSummary} from './charts.js';
 const normalized=value=>String(value||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim();
 const problem=(message,status)=>Object.assign(new Error(message),{status});
 // Adapter for a server-configured, authorized chart source. No title-to-chords
 // inference, scraping, or generated lyrics take place in this adapter.
-export function createChartSource({endpoint=process.env.SONG_CHART_ENDPOINT,token=process.env.SONG_CHART_TOKEN,fetcher=globalThis.fetch}={}){
+export function createChartSource({endpoint=process.env.SONG_CHART_ENDPOINT,token=process.env.SONG_CHART_TOKEN,guitarPartyKey=process.env.GUITARPARTY_API_KEY,fetcher=globalThis.fetch}={}){
  return async({title,artist,id})=>{
   if(typeof title!=='string'||!title.trim()||title.length>300||typeof artist!=='string'||!artist.trim()||artist.length>300)throw problem('Choose a song with a title and artist first.',400);
-  if(!endpoint)throw problem('Automatic chart generation is not connected yet. A source containing the song’s lyrics and correctly placed chords is required.',503);
+  if(!endpoint){if(guitarPartyKey)return createGuitarPartySource({key:guitarPartyKey,fetcher})({title,artist});throw problem('GuitarParty is not connected. Add your GuitarParty API key in the server settings, then restart the server to enable automatic charts.',503)}
   let url;try{url=new URL(endpoint);if(url.protocol!=='https:'||url.username||url.password)throw Error()}catch{throw problem('The chart source configuration is invalid.',503)}
   url.searchParams.set('title',title);url.searchParams.set('artist',artist);if(id)url.searchParams.set('id',String(id).slice(0,120));
   let response;try{response=await fetcher(url,{signal:AbortSignal.timeout(15000),headers:{Accept:'application/json',...(token?{Authorization:'Bearer '+token}:{})},redirect:'error'})}catch{throw problem('The chart source could not be reached. Please try again.',502)}
