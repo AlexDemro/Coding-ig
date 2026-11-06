@@ -28,12 +28,6 @@ export function parseChart(source){
   }
   flush();return rows;
 }
-export function spotifyTrack(value){
-  const trimmed=value.trim();
-  let match=/^spotify:track:([A-Za-z0-9]{22})$/.exec(trimmed);
-  if(match)return match[1];
-  try{const url=new URL(trimmed);if(url.protocol!=='https:'||url.hostname!=='open.spotify.com')return null;match=/^\/(?:intl-[a-z]{2}\/)?track\/([A-Za-z0-9]{22})\/?$/.exec(url.pathname);return match?.[1]||null}catch{return null}
-}
 export function layoutChart(source,{title='My chord sheet',artist='',columns=60,perPage=18}={}){
   if(!Number.isInteger(columns)||columns<12||!Number.isInteger(perPage)||perPage<1)throw new Error('Invalid page layout.');
   const rows=parseChart(source);const wrapped=[];
@@ -60,7 +54,7 @@ function titleLines(value,max=42){const chars=Array.from(value);return [chars.sl
 export function chartSVG(page,total=1){
   const text=(x,y,value,size=28,color='#233b31',extra='')=>`<text x="${x}" y="${y}" font-size="${size}" fill="${color}" ${extra}>${escape(value)}</text>`;
   let svg='<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1754" viewBox="0 0 1240 1754" role="img"><title>'+escape(page.title)+'</title><rect width="1240" height="1754" fill="#fffef9"/><g font-family="Arial, sans-serif">';
-  svg+=text(80,70,'FRETMATE.APP · PLAY SOMETHING YOU LOVE',16,'#7b8e70','letter-spacing="2"');
+  svg+=text(80,70,'FRETMATE · PLAY SOMETHING YOU LOVE',16,'#7b8e70','letter-spacing="2"');
   titleLines(page.title).forEach((line,i)=>svg+=text(80,135+i*48,line,42,'#233b31','font-weight="700"'));
   svg+=text(80,240,page.artist.length>75?page.artist.slice(0,74)+'…':page.artist,23,'#77856e');
   svg+='<path d="M80 270H1160" stroke="#dfe5d7"/></g><g font-family="monospace" xml:space="preserve">';

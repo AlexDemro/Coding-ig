@@ -17,8 +17,8 @@ try{
  await send('Browser.setDownloadBehavior',{behavior:'allow',downloadPath:dir+'/downloads'});
  await send('Emulation.setDeviceMetricsOverride',{width:1365,height:1000,deviceScaleFactor:1,mobile:false});
  await send('Page.navigate',{url:process.env.SITE_URL||'http://127.0.0.1:3001/'});
- for(let i=0;i<100;i++){if(await evaluate("document.readyState==='complete' && typeof document.getElementById('song-generate')?.onclick==='function'"))break;await new Promise(r=>setTimeout(r,100))}
- assert.equal(await evaluate('document.title'),'FretMate.app — Find your rhythm');
+ for(let i=0;i<100;i++){if(await evaluate("document.readyState==='complete' && typeof document.getElementById('sheet-generate')?.onclick==='function'"))break;await new Promise(r=>setTimeout(r,100))}
+ assert.equal(await evaluate('document.title'),'FretMate — Find your rhythm');
  await evaluate("document.querySelector('[data-tab=\"tuner\"]').click()");
  assert.equal(await evaluate("document.querySelectorAll('[data-arc]').length"),13);
  // Feed a real Web Audio stream into the tuner. This checks the browser audio
@@ -28,57 +28,17 @@ try{
  assert.equal(liveNote,'A2','real Web Audio pipeline detects A2');
  assert.ok(await evaluate("document.querySelectorAll('.arc-segments .lit').length>0"));
  const shot=await send('Page.captureScreenshot',{format:'png'});await writeFile(dir+'/tuner-desktop.png',Buffer.from(shot.data,'base64'));
- await evaluate("document.querySelector('[data-tab=\"song-maker\"]').click()");
- assert.equal(await evaluate("document.getElementById('song-go').disabled"),true);
- assert.equal(await evaluate("document.getElementById('song-manual-editor').open"),false);
- assert.equal(await evaluate("document.getElementById('song-text').getClientRects().length"),0,'manual editor hidden from the main flow');
- await evaluate("document.getElementById('song-manual-editor').open=true;document.getElementById('song-example').click();document.getElementById('song-generate').click()");
+ assert.equal(await evaluate("document.querySelectorAll('[data-tab=\"song-maker\"],[data-go=\"song-maker\"],#song-maker').length"),0);
+ await evaluate("document.querySelector('[data-tab=\"reader\"]').click();document.getElementById('sheet-title').value='Practice sheet';document.getElementById('sheet-text').value='[G]Original practice [C]words';document.getElementById('sheet-generate').click()");
  await evaluate("window.testAudio.close()");
- assert.equal(await evaluate("document.querySelectorAll('#song-pages .chart-page').length"),1);
- assert.match(await evaluate("document.getElementById('song-chart-status').textContent"),/image ready/);
- await evaluate("new Promise((resolve,reject)=>{const img=document.querySelector('#song-pages img');if(img.complete&&img.naturalWidth)resolve();else {img.onload=resolve;img.onerror=reject}})");
- await evaluate("document.querySelector('#song-pages .chart-downloads .primary').click()");
+ assert.equal(await evaluate("document.querySelectorAll('#sheet-pages .chart-page').length"),1);
+ assert.match(await evaluate("document.getElementById('sheet-chart-status').textContent"),/image ready/);
+ await evaluate("new Promise((resolve,reject)=>{const img=document.querySelector('#sheet-pages img');if(img.complete&&img.naturalWidth)resolve();else {img.onload=resolve;img.onerror=reject}})");
+ await evaluate("document.querySelector('#sheet-pages .chart-downloads .primary').click()");
  let downloads=[];for(let i=0;i<100;i++){try{downloads=await readdir(dir+'/downloads')}catch{}if(downloads.some(x=>x.endsWith('.png')))break;await new Promise(r=>setTimeout(r,100))}
  const file=downloads.find(x=>x.endsWith('.png'));assert.ok(file,'PNG file downloaded');const png=await readFile(dir+'/downloads/'+file);assert.equal(png.subarray(1,4).toString(),'PNG');assert.equal(png.readUInt32BE(16),1240);assert.equal(png.readUInt32BE(20),1754);
- await evaluate("document.getElementById('song-title').value='Changed';document.getElementById('song-title').dispatchEvent(new Event('input'))");
- assert.equal(await evaluate("document.querySelectorAll('#song-pages .chart-page').length"),0);
- // Autocomplete uses a deterministic catalog response; outbound catalog
- // access is checked separately and may be restricted by the environment.
- await evaluate(`window.originalFetch=window.fetch;window.songRequests=[];window.fetch=async(url,options)=>{if(String(url).startsWith('/api/song-chart?')){if(window.failChart)return {ok:false,json:async()=>({error:'Automatic chart source is not connected.'})};await new Promise(r=>setTimeout(r,250));return {ok:true,json:async()=>({title:'Dracula',artist:'Tame Impala',chart:'[G]Original fixture words for [C]an export test'})}}if(String(url).startsWith('/api/songs?')){const query=new URL(url,location.origin).searchParams.get('q');window.songRequests.push(query);if(query==='fail')return {ok:false,json:async()=>({error:'Catalog temporarily unavailable'})};if(query==='nothing')return {ok:true,json:async()=>({results:[]})};const result={id:'2',title:'Dracula',artist:'Tame Impala',album:'Test album',spotifyUrl:'https://open.spotify.com/search/Dracula%20Tame%20Impala'};if(query==='slow')await new Promise(r=>setTimeout(r,1000));return {ok:true,json:async()=>({results:[{...result,title:query==='slow'?'Old result':'Dracula'}]})}}return window.originalFetch(url,options)};document.querySelector('[data-tab="song-maker"]').click();const search=document.getElementById('song-search');search.value='D';search.dispatchEvent(new Event('input'))`);
- await new Promise(r=>setTimeout(r,450));assert.equal(await evaluate('window.songRequests.length'),0);
- await evaluate("{const input=document.getElementById('song-search');input.focus();for(const q of ['Dr','Dra','Dracula Tame Impala']){input.value=q;input.dispatchEvent(new Event('input'))}}");
- for(let i=0;i<40;i++){if(await evaluate("document.getElementById('song-search').getAttribute('aria-expanded')==='true'"))break;await new Promise(r=>setTimeout(r,50))}
- assert.equal(await evaluate('window.songRequests.length'),1,'debounced rapid keystrokes');
- assert.match(await evaluate("document.getElementById('song-suggestions').textContent"),/Dracula.*Tame Impala/);
- const autocomplete=await send('Page.captureScreenshot',{format:'png'});await writeFile(dir+'/song-autocomplete.png',Buffer.from(autocomplete.data,'base64'));
- await evaluate("{const input=document.getElementById('song-search');input.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}))}");
- assert.equal(await evaluate("document.getElementById('song-title').value"),'Dracula');assert.equal(await evaluate("document.getElementById('song-artist').value"),'Tame Impala');
- assert.equal(await evaluate("document.getElementById('selected-song').hidden"),false);
- assert.equal(await evaluate("document.getElementById('song-go').disabled"),false);
- await evaluate("document.getElementById('song-manual-editor').open=false;document.getElementById('song-go').click()");
- for(let i=0;i<60;i++){if(await evaluate("document.getElementById('song-progress').getAttribute('data-state')==='ready'"))break;await new Promise(r=>setTimeout(r,50))}
- assert.equal(await evaluate("document.getElementById('song-progress-value').textContent"),'100%');
- assert.equal(await evaluate("document.querySelectorAll('#song-pages .chart-page').length"),1);
- assert.match(await evaluate("document.getElementById('song-text').value"),/Original fixture/);
- const flow=await send('Page.captureScreenshot',{format:'png'});await writeFile(dir+'/song-go.png',Buffer.from(flow.data,'base64'));
- await evaluate("window.failChart=true;document.getElementById('song-go').click()");
- for(let i=0;i<40;i++){if(await evaluate("document.getElementById('song-progress').getAttribute('data-state')==='error'"))break;await new Promise(r=>setTimeout(r,50))}
- assert.match(await evaluate("document.getElementById('song-progress-message').textContent"),/not connected/);
- assert.notEqual(await evaluate("document.getElementById('song-progress-value').textContent"),'100%');
- assert.equal(await evaluate("document.querySelectorAll('#song-pages .chart-page').length"),0,'missing source must not produce a fake chart');
- await evaluate('window.failChart=false');
-
- assert.match(await evaluate("document.getElementById('selected-song-spotify').href"),/open.spotify.com/);
- await evaluate("{document.getElementById('change-song').click();const input=document.getElementById('song-search');input.value='slow';input.dispatchEvent(new Event('input'))}");
- assert.equal(await evaluate("document.getElementById('song-go').disabled"),true);
- assert.equal(await evaluate("document.getElementById('song-progress').hidden"),true);
- await new Promise(r=>setTimeout(r,400));
- await evaluate("{const input=document.getElementById('song-search');input.value='Dracula';input.dispatchEvent(new Event('input'))}");
- await new Promise(r=>setTimeout(r,1200));
- assert.ok(!await evaluate("document.getElementById('song-suggestions').textContent.includes('Old result')"),'late response cannot replace latest results');
- await evaluate("{const input=document.getElementById('song-search');input.value='nothing';input.dispatchEvent(new Event('input'))}");await new Promise(r=>setTimeout(r,500));assert.match(await evaluate("document.getElementById('song-search-status').textContent"),/No matches/);
- await evaluate("{const input=document.getElementById('song-search');input.value='fail';input.dispatchEvent(new Event('input'))}");await new Promise(r=>setTimeout(r,500));assert.match(await evaluate("document.getElementById('song-search-status').textContent"),/unavailable/);
- await evaluate('window.fetch=window.originalFetch');
+ await evaluate("document.getElementById('sheet-title').value='Changed';document.getElementById('sheet-title').dispatchEvent(new Event('input'))");
+ assert.equal(await evaluate("document.querySelectorAll('#sheet-pages .chart-page').length"),0);
  // Photo OCR is simulated to test the application pipeline, not the external OCR model.
  await evaluate(`window.Tesseract={createWorker:async()=>({setParameters:async()=>{},recognize:async()=>({data:{text:'G          C\\nAn original practice line\\nAm         D\\nAnother original line'}}),terminate:async()=>{}})};document.querySelector('[data-tab="reader"]').click();const transfer=new DataTransfer();transfer.items.add(new File(['test'],'chart.png',{type:'image/png'}));const input=document.getElementById('sheet-file');input.files=transfer.files;input.dispatchEvent(new Event('change'));document.getElementById('read-sheet').click()`);
  for(let i=0;i<100;i++){if(await evaluate("document.querySelectorAll('#sheet-pages .chart-page').length>0"))break;await new Promise(r=>setTimeout(r,50))}
@@ -93,6 +53,6 @@ try{
  assert.ok(await evaluate('document.documentElement.scrollWidth<=window.innerWidth'),'no mobile horizontal overflow');
  const mobile=await send('Page.captureScreenshot',{format:'png'});await writeFile(dir+'/tuner-mobile.png',Buffer.from(mobile.data,'base64'));
  assert.equal(errors.length,0,JSON.stringify(errors));
- console.log('Browser checks passed: search/select/Go progress/export and missing-source handling (fixture chart), optional editor, autocomplete debounce/selection/errors/stale-response handling (mock catalog), real Web Audio A2 detection and arc feedback, desktop/mobile navigation, 13-segment tuner, chart preview, real PNG download (1240 × 1754), edit invalidation, simulated photo-to-chart pipeline.');
+ console.log('Browser checks passed: song feature removed, FretMate branding, real Web Audio A2 detection and arc feedback, desktop/mobile navigation, sheet-reader chart preview, PNG download (1240 × 1754), edit invalidation, simulated photo-to-chart pipeline.');
  console.log('Screenshots: '+dir+'/tuner-desktop.png; '+dir+'/tuner-mobile.png');
 }finally{ws?.close();browser.kill('SIGTERM')}

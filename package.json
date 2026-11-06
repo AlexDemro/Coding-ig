@@ -1,10 +1,10 @@
 {
-  "name": "fretmate-app",
+  "name": "fretmate",
   "version": "1.0.0",
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "test": "node music.test.js && node tuner.test.js && node charts.test.js && node song-search.test.js && node chart-source.test.js && node guitarparty-source.test.js",
+    "test": "node music.test.js && node tuner.test.js && node charts.test.js",
     "test:browser": "node browser.test.mjs"
   },
   "type": "module"

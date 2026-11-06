@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {parseChart,layoutChart,chartSVG,chartSummary,spotifyTrack} from './charts.js';
+import {parseChart,layoutChart,chartSVG,chartSummary} from './charts.js';
 test('inline chord changes anchor above the intended lyric characters',()=>{
  assert.deepEqual(parseChart('[G]Hello [Am]there'),[{lyrics:'Hello there',chords:[{column:0,text:'G'},{column:6,text:'Am'}]}]);
 });
@@ -33,11 +33,4 @@ test('song size is bounded and multi-page output includes page numbering',()=>{
  assert.throws(()=>parseChart('a'.repeat(40001)),/40,000/);
  const pages=layoutChart(Array.from({length:40},()=> '[G]An original line').join('\n'));
  assert.equal(pages.length,3);assert.match(chartSVG(pages[2],3),/3 \/ 3/);
-});
-test('Spotify references accept only actual Spotify track links and URIs',()=>{
- const id='1234567890abcdefghijkl';
- assert.equal(spotifyTrack('https://open.spotify.com/track/'+id+'?si=abc'),id);
- assert.equal(spotifyTrack('spotify:track:'+id),id);
- assert.equal(spotifyTrack('https://open.spotify.com/intl-en/track/'+id),id);
- for(const bad of ['javascript:alert(1)','https://evil.com/track/'+id,'https://open.spotify.com.evil.com/track/'+id,'https://open.spotify.com/playlist/'+id,'not a song'])assert.equal(spotifyTrack(bad),null);
 });
