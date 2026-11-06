@@ -83,3 +83,35 @@ test('quiet pitch detection is independent of microphone amplitude and DC offset
   accurate(analysePitch(samples,44100).hz,195.9977);
  }
 });
+
+import {TuningGuide} from './tuner.js';
+test('guidance uses plain directions and stays steady near the in-tune boundary',()=>{
+ const guide=new TuningGuide(),hz=cents=>110*2**(cents/1200);
+ assert.equal(guide.read(hz(-18)).direction,'tighten');
+ assert.equal(guide.read(hz(-3)).direction,'tuned');
+ for(const cents of [-6,7,-7,6])assert.equal(guide.read(hz(cents)).direction,'tuned');
+ assert.equal(guide.read(hz(12)).direction,'loosen');
+ assert.equal(guide.read(hz(6)).direction,'loosen');
+ assert.equal(guide.read(hz(4)).direction,'tuned');
+});
+test('selected string stays the target even when the played note is far out of tune',()=>{
+ const guide=new TuningGuide();
+ const reading=guide.read(110,40);
+ assert.equal(reading.midi,40);assert.equal(reading.direction,'loosen');assert.ok(reading.cents>400);
+ assert.equal(guide.read(80,40).direction,'tighten');
+});
+test('automatic note selection does not alternate at the halfway point',()=>{
+ const guide=new TuningGuide(),hz=cents=>110*2**(cents/1200);
+ assert.equal(guide.read(hz(40)).midi,45);
+ for(const cents of [49,52,48,57])assert.equal(guide.read(hz(cents)).midi,45);
+ assert.equal(guide.read(hz(65)).midi,46);
+});
+test('a brief missed frame retains a marked last note and reacquires without restarting',()=>{
+ const tuner=new GuitarTuner();
+ for(let i=0;i<5;i++)tuner.process(note(110,48000),48000,i*80);
+ const missed=tuner.process(new Float32Array(8192),48000,400);
+ assert.equal(missed.hz,null);accurate(missed.heldHz,110);
+ accurate(tuner.process(note(110,48000),48000,480).hz,110);
+ const stale=tuner.process(new Float32Array(8192),48000,900);
+ assert.equal(stale.hz,null);assert.equal(stale.heldHz,null);
+});

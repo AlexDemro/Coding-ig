@@ -33,9 +33,10 @@ test('tuner responds immediately, resumes audio before permission, handles denia
  const old={document:globalThis.document,window:globalThis.window,Option:globalThis.Option,requestAnimationFrame:globalThis.requestAnimationFrame,cancelAnimationFrame:globalThis.cancelAnimationFrame};
  const originalNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator');
  const calls=[];let request,animation;
+ const stringButton={dataset:{string:'40'},classList:{toggle(){}},setAttribute(){}};
  const graphNode=()=>({connect(){calls.push('connect')},disconnect(){}});
  const ctx={state:'suspended',sampleRate:48000,destination:{},resume(){calls.push('resume');this.state='running';return Promise.resolve()},createMediaStreamSource(){calls.push('source');return graphNode()},createAnalyser(){return {...graphNode(),getFloatTimeDomainData(samples){for(let i=0;i<samples.length;i++)samples[i]=.0002*Math.sin(2*Math.PI*110*i/48000)}}},createGain(){return {...graphNode(),gain:{value:1}}}};
- globalThis.document={getElementById:element,querySelectorAll:()=>[],createElement:()=>({}),addEventListener(){}};
+ globalThis.document={getElementById:element,querySelectorAll:selector=>selector==='[data-string]'?[stringButton]:[],createElement:()=>({}),addEventListener(){}};
  globalThis.window={isSecureContext:true,AudioContext:class{constructor(){return ctx}}};
  globalThis.Option=class{};globalThis.requestAnimationFrame=callback=>{animation=callback;return 1};globalThis.cancelAnimationFrame=()=>{};
  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{mediaDevices:{getUserMedia(){calls.push('permission');return new Promise((resolve,reject)=>{request={resolve,reject}})}}}});
@@ -53,6 +54,8 @@ test('tuner responds immediately, resumes audio before permission, handles denia
   assert.equal(element('mic').textContent,'Stop listening');assert.ok(calls.includes('source'));
   for(const time of [80,160,240,320])animation(time);
   assert.equal(element('pitch-note').textContent,'A2');assert.ok(element('input-level').value>0);assert.match(element('input-level-text').textContent,/Note detected/);
+  stringButton.onclick();for(const time of [400,480,560])animation(time);
+  assert.equal(element('pitch-note').textContent,'E2');assert.match(element('tune-status').textContent,/Loosen/);
   await element('mic').onclick();assert.equal(stopped,2);
   window.isSecureContext=false;await element('mic').onclick();assert.match(element('tune-status').textContent,/HTTPS or localhost/);
   window.isSecureContext=true;window.webkitAudioContext=window.AudioContext;delete window.AudioContext;

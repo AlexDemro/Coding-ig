@@ -51,7 +51,7 @@ export function analysePitch(input, sampleRate, {minHz = 50, maxHz = 1000} = {})
 }
 
 export class GuitarTuner {
-  constructor(){this.noiseFloor=0.000008;this.history=[];this.smoothed=null;this.lastGood=-Infinity;}
+  constructor(){this.noiseFloor=0.000008;this.history=[];this.smoothed=null;this.lastGood=-Infinity;this.lastAccepted=-Infinity;}
   process(samples,rate,now=performance.now()) {
     const result=analysePitch(samples,rate);
     const {rms,confidence}=result;
@@ -67,6 +67,8 @@ export class GuitarTuner {
     const sensitivity=accepted ? result.gain : 1;
     let status=rms<gate?'weak':'noise';
     if(accepted) {
+      if(now-this.lastAccepted>250)this.history=[];
+      this.lastAccepted=now;
       const cents=1200*Math.log2(result.hz);
       if(this.history.length&&Math.abs(cents-this.history.at(-1))>45)this.history=[];
       this.history.push(cents);this.history=this.history.slice(-5);
@@ -75,10 +77,10 @@ export class GuitarTuner {
         this.smoothed=this.smoothed===null||Math.abs(median-this.smoothed)>70?median:this.smoothed+0.4*(median-this.smoothed);
         this.lastGood=now;status='locked';
       }else status='settling';
-    }else this.history=[];
+    }else if(now-this.lastAccepted>200)this.history=[];
     if(now-this.lastGood>300)this.smoothed=null;
     const hz=status==='locked'&&this.smoothed!==null?2**(this.smoothed/1200):null;
-    return {hz,rms,db,confidence,noiseFloor:this.noiseFloor,sensitivity,status,level:Math.max(0,Math.min(1,(db+90)/75))};
+    return {hz,heldHz:!hz&&this.smoothed!==null?2**(this.smoothed/1200):null,rms,db,confidence,noiseFloor:this.noiseFloor,sensitivity,status,level:Math.max(0,Math.min(1,(db+90)/75))};
   }
 }
 
@@ -89,4 +91,18 @@ export function microphoneConstraints(mediaDevices) {
     if(supported[name]!==false)audio[name]={ideal:false};
   }
   return {audio};
+}
+
+// Keeps guidance from flickering around the in-tune and nearest-note boundaries.
+export class TuningGuide {
+  constructor(){this.midi=null;this.direction=null;}
+  read(hz,targetMidi=null){
+    const position=69+12*Math.log2(hz/440);
+    if(targetMidi!==null)this.midi=targetMidi;
+    else if(this.midi===null||Math.abs(position-this.midi)>.6)this.midi=Math.round(position);
+    const cents=(position-this.midi)*100;
+    const tolerance=this.direction==='tuned'?8:5;
+    this.direction=Math.abs(cents)<=tolerance?'tuned':cents<0?'tighten':'loosen';
+    return {midi:this.midi,cents,direction:this.direction};
+  }
 }

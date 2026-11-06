@@ -1,4 +1,4 @@
-import {GuitarTuner,microphoneConstraints} from './tuner.js';
+import {GuitarTuner,TuningGuide,microphoneConstraints} from './tuner.js';
 import {createGuitar} from './guitar-audio.js';
 import {notes,transpose,extractChords} from './music.js';
 const $=id=>document.getElementById(id);let stopMic=()=>{},stopMetro=()=>{},stopStrum=()=>{};
@@ -34,9 +34,29 @@ const patterns=[{steps:['↓','·','↓','·','↓','·','↓','·'],description
 function renderPattern(){const p=patterns[Number($('pattern').value)];$('strum-grid').innerHTML=p.steps.map((s,i)=>`<div><small>${i%2?'&':i/2+1}</small><b>${s}</b></div>`).join('');$('pattern-description').textContent=p.description}renderPattern();let strumRunning=false,strumTimer;
 stopStrum=()=>{guitar?.stop();clearInterval(strumTimer);strumRunning=false;$('strum-play').textContent='Play pattern';document.querySelectorAll('#strum-grid div').forEach(x=>x.classList.remove('on'))};$('pattern').onchange=()=>{stopStrum();renderPattern()};$('strum-tempo').oninput=()=>$('strum-tempo-label').textContent=$('strum-tempo').value+' BPM';
 $('strum-play').onclick=async()=>{if(strumRunning){stopStrum();return}try{const ctx=await getAudio();guitar??=createGuitar(ctx);strumRunning=true;let step=0,next=ctx.currentTime+.05;$('strum-play').textContent='Stop pattern';strumTimer=setInterval(()=>{while(next<ctx.currentTime+.1){const i=step%8,s=patterns[Number($('pattern').value)].steps[i];if(s!=='·')guitar.strum(next,$('strum-chord').value,s==='↑');setTimeout(()=>{if(strumRunning)document.querySelectorAll('#strum-grid div').forEach((x,j)=>x.classList.toggle('on',i===j))},Math.max(0,(next-ctx.currentTime)*1000));step++;next+=30/Number($('strum-tempo').value)}},25)}catch{$('pattern-description').textContent='Audio could not start. Try again in a browser with Web Audio support.'}};
-let stream,frame,micPending=false,micGeneration=0,micWatchdog;stopMic=()=>{micGeneration++;micPending=false;clearTimeout(micWatchdog);stream?.getTracks().forEach(t=>t.stop());stream=null;cancelAnimationFrame(frame);$('input-level').value=0;$('input-level-text').textContent='Microphone off';$('pitch-note').textContent='—';$('needle').style.left='50%';$('mic').textContent='Enable microphone';$('mic').setAttribute('aria-busy','false');$('tune-status').textContent='Ready when you are'};
+let targetMidi=null,guide=new TuningGuide(),lastGuide=null;
+function noteName(midi){return notes[(midi%12+12)%12]+(Math.floor(midi/12)-1)}
+function setTunerState(state,symbol,label){
+  $('tuner-readout').setAttribute('data-state',state);
+  $('tuner-symbol').textContent=symbol;$('tuner-note-label').textContent=label;
+  for(const direction of ['tighten','tuned','loosen'])$('guide-'+direction).classList.toggle('active',state===direction);
+}
+function resetTunerDisplay(){
+  guide=new TuningGuide();lastGuide=null;
+  $('pitch-note').textContent=targetMidi===null?'—':noteName(targetMidi);
+  setTunerState('idle','♫',targetMidi===null?'PLUCK ONE STRING':'YOUR TARGET NOTE');
+}
+document.querySelectorAll('[data-string]').forEach(button=>button.onclick=()=>{
+  targetMidi=button.dataset.string==='auto'?null:Number(button.dataset.string);
+  document.querySelectorAll('[data-string]').forEach(other=>{other.classList.toggle('selected',other===button);other.setAttribute('aria-pressed',String(other===button))});
+  resetTunerDisplay();
+  $('target-hint').textContent=targetMidi===null?'Auto finds the nearest note. Choose a string if you’re unsure.':`Tune to ${noteName(targetMidi)}. Pluck only the selected string.`;
+  $('tune-status').textContent=stream?'Pluck your string to begin':'Enable the microphone to begin';
+});
+let stream,frame,micPending=false,micGeneration=0,micWatchdog;stopMic=()=>{micGeneration++;micPending=false;clearTimeout(micWatchdog);stream?.getTracks().forEach(t=>t.stop());stream=null;cancelAnimationFrame(frame);$('input-level').value=0;$('input-level-text').textContent='Microphone off';resetTunerDisplay();$('mic').textContent='Enable microphone';$('mic').setAttribute('aria-busy','false');$('tune-status').textContent='Ready when you are'};
 $('mic').onclick=async()=>{
   if(stream||micPending){stopMic();return}
+  resetTunerDisplay();
   micPending=true;
   const generation=++micGeneration;
   $('mic').textContent='Cancel microphone request';
@@ -89,15 +109,25 @@ $('mic').onclick=async()=>{
         $('input-level').value=reading.level;
         $('input-level-text').textContent=`${Math.round(reading.db)} dB · ${reading.status==='locked'?'Note detected':reading.status==='settling'?'Finding pitch':reading.status==='weak'?'Very quiet':'Background sound'}`;
         if(reading.hz){
-          const midi=Math.round(69+12*Math.log2(reading.hz/440)),ideal=440*2**((midi-69)/12),cents=1200*Math.log2(reading.hz/ideal);
-          $('pitch-note').textContent=notes[(midi%12+12)%12]+(Math.floor(midi/12)-1);
-          $('pitch-detail').textContent=`${reading.hz.toFixed(1)} Hz · ${Math.round(cents)>0?'+':''}${Math.round(cents)} cents`;
-          $('tune-status').textContent=Math.abs(cents)<5?'You’re in tune':cents<0?'A little flat — tighten the string':'A little sharp — loosen the string';
-          $('needle').style.left=`${Math.max(0,Math.min(100,50+cents))}%`;
+          lastGuide=guide.read(reading.hz,targetMidi);
+          const {midi,cents,direction}=lastGuide;
+          $('pitch-note').textContent=noteName(midi);
+          const close=Math.abs(cents)<.5;
+          $('pitch-detail').textContent=`${close?'Right on pitch':Math.abs(Math.round(cents))+' cents '+(cents<0?'below':'above')+' target'} · ${reading.hz.toFixed(1)} Hz`;
+          const messages={tuned:'You’re in tune!',tighten:'Tighten the string gently',loosen:'Loosen the string gently'};
+          const symbols={tuned:'✓',tighten:'↑',loosen:'↓'};
+          $('tune-status').textContent=messages[direction];
+          setTunerState(direction,symbols[direction],direction==='tuned'?'SOUNDS GOOD':direction==='tighten'?'PITCH IS TOO LOW':'PITCH IS TOO HIGH');
+        }else if(reading.heldHz&&lastGuide){
+          // A short, explicitly marked hold avoids blanking on a single missed
+          // frame. It never claims that a held note is still in tune.
+          setTunerState('held','…','LAST CLEAR NOTE');
+          $('tune-status').textContent='Listening… let the string ring';
+          $('pitch-detail').textContent='Holding your last note briefly while the sound settles.';
         }else{
-          $('pitch-note').textContent='—';$('needle').style.left='50%';
-          $('tune-status').textContent=reading.status==='weak'?'Signal too weak — pluck a string again':reading.status==='settling'?'Finding your note…':'Listening for a clear guitar note…';
-          $('pitch-detail').textContent=reading.status==='weak'?'Sensitivity adjusts automatically. Let one string ring; move the guitar a little closer if needed.':reading.status==='settling'?'Let the string ring while the reading settles.':'Background sound detected. Mute the other strings and pluck one string at a time.';
+          resetTunerDisplay();
+          $('tune-status').textContent=reading.status==='weak'?'Pluck your string a little louder':reading.status==='settling'?'Finding your note…':'Pluck just one string';
+          $('pitch-detail').textContent=reading.status==='weak'?'The microphone is listening. Move your guitar a little closer if needed.':reading.status==='settling'?'Let it ring. No need to pluck again yet.':'Mute the other strings and let one clear note ring.';
         }
       }
       frame=requestAnimationFrame(tick);
