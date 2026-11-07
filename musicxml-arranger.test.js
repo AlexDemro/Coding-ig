@@ -37,3 +37,14 @@ test('missing part timing metadata uses shared divisions and aligns parts by mea
  const source=xml(note('C')).replace('</part></score-partwise>','<measure number="2">'+note('D')+'</measure></part><part id="P2"><measure number="2">'+note('G',3)+'</measure></part></score-partwise>');
  const score=readMusicXML(source);const bass=score.notes.find(n=>n.part===1);assert.equal(bass.duration,1);assert.equal(bass.measure,1);assert.equal(bass.time,score.measures[1].start);assert.ok(score.recognitionWarnings.length);
 });
+test('printed harmony overrides guesses and retains slash chords and offbeat changes',()=>{
+ const harmony=(root,kind,bass='')=>`<harmony><root><root-step>${root}</root-step></root><kind>${kind}</kind>${bass?'<bass><bass-step>'+bass+'</bass-step></bass>':''}</harmony>`;
+ const source=xml(harmony('D','dominant','F')+note('C')+harmony('A','minor')+note('E')+note('G'));
+ const result=scoreToChart(source),frames=arrangeChords(readMusicXML(source));assert.equal(result.chordSource,'printed');assert.deepEqual(frames.map(f=>f.chord),['D7/F','Am']);assert.equal(frames[1].time,1);
+ const decorated=xml('<harmony><root><root-step>D</root-step><root-alter>-1</root-alter></root><kind>dominant</kind><degree><degree-value>9</degree-value><degree-alter>0</degree-alter><degree-type>add</degree-type></degree></harmony>'+note('C')+'<harmony><kind>none</kind></harmony>'+note('E'));
+ assert.deepEqual(arrangeChords(readMusicXML(decorated)).map(f=>f.chord),['Db7add9','N.C.']);
+});
+test('multiple measures with mismatched durations are blocked before chord arrangement',()=>{
+ const source=xml(note('C')).replace('</part></score-partwise>','<measure number="2">'+note('C')+'</measure><measure number="3">'+note('G')+'</measure></part></score-partwise>');
+ assert.throws(()=>scoreToChart(source),e=>e.code==='UNRELIABLE_SCORE');
+});

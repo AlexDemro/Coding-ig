@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {parseChart,layoutChart,chartSVG,chartSummary} from './charts.js';
+import {parseChart,layoutChart,chartDrawing,chartSummary} from './charts.js';
 test('inline chord changes anchor above the intended lyric characters',()=>{
  assert.deepEqual(parseChart('[G]Hello [Am]there'),[{lyrics:'Hello there',chords:[{column:0,text:'G'},{column:6,text:'Am'}]}]);
 });
@@ -25,18 +25,26 @@ test('a long chord at a wrap boundary moves intact to the next row',()=>{
  const rows=layoutChart('1234567890 [Cmaj7/G]hello',{columns:14}).flatMap(p=>p.rows);
  assert.equal(rows[1].chords[0].text,'Cmaj7/G');assert.equal(rows[1].chords[0].column,0);
 });
-test('image markup escapes user text and fixes glyph spacing for chord alignment',()=>{
+test('canvas drawing keeps user content as literal text and uses a portrait image',()=>{
  const pages=layoutChart('[G]<script>alert("x")</script> & sing',{title:'<unsafe> & "title"'});
- const svg=chartSVG(pages[0]);assert.ok(!svg.includes('<script>'));assert.ok(svg.includes('&lt;script&gt;'));assert.ok(svg.includes('&amp;'));assert.ok(svg.includes('lengthAdjust="spacingAndGlyphs"'));assert.ok(svg.includes('width="1240" height="1754"'));
+ const drawing=chartDrawing(pages[0]);assert.ok(drawing.some(e=>e.type==='text'&&e.text.includes('<script>')));assert.ok(drawing.some(e=>e.type==='text'&&e.text.includes('<unsafe>')));assert.equal(drawing[0].width,1240);assert.equal(drawing[0].height,1754);
 });
 test('song size is bounded and multi-page output includes page numbering',()=>{
  assert.throws(()=>parseChart('a'.repeat(40001)),/40,000/);
  const pages=layoutChart(Array.from({length:40},()=> '[G]An original line').join('\n'));
- assert.equal(pages.length,3);assert.match(chartSVG(pages[2],3),/3 \/ 3/);
+ assert.equal(pages.length,3);assert.ok(chartDrawing(pages[2],3).some(e=>e.text==='3 / 3'));
 });
 
 test('adjacent lyric syllables get enough spacing for long chord labels',()=>{
  const rows=layoutChart('[Bb]A[Gm7]ve [D]Ma[A7]ria').flatMap(page=>page.rows);
  for(const row of rows)for(let i=1;i<row.chords.length;i++)assert.ok(row.chords[i].column>=row.chords[i-1].column+row.chords[i-1].text.length+2);
  assert.match(rows.map(r=>r.lyrics).join(''),/A +ve/);
+});
+test('proportional font measurements anchor chords to lyric chunks without clipping',()=>{
+ const measure=(text,{size})=>Array.from(text).reduce((sum,c)=>sum+(/[il ]/.test(c)?.2:.8)*size,0);
+ const page={title:'Alignment',artist:'',number:1,rows:[{lyrics:'illWWWide',chords:[{text:'Cmaj7',column:0},{text:'D/F#',column:3},{text:'G',column:6}]}]};
+ const drawing=chartDrawing(page,1,measure),chords=drawing.filter(e=>e.color==='#46783c'),words=drawing.filter(e=>e.type==='text'&&e.y===356);
+ assert.deepEqual(chords.map(e=>e.x),words.map(e=>e.x));
+ for(let i=1;i<chords.length;i++)assert.ok(chords[i].x>=chords[i-1].x+measure(chords[i-1].text,chords[i-1])+15);
+ for(const e of [...chords,...words])assert.ok(e.x+measure(e.text,e)<=1160.001);
 });

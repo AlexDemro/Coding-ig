@@ -1,5 +1,6 @@
 import {XMLParser,XMLValidator} from 'fast-xml-parser';
 import {unzipSync} from 'fflate';
+import {assertScoreQuality} from './score-quality.js';
 const mod=n=>(n%12+12)%12;
 const pitchClasses={C:0,D:2,E:4,F:5,G:7,A:9,B:11};
 const sharpNames=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
@@ -30,7 +31,7 @@ export function readMusicXML(input){
  if(XMLValidator.validate(xml)!==true)throw new Error('The notation engine returned invalid MusicXML.');
  const root=tree(new XMLParser({preserveOrder:true,ignoreAttributes:false,trimValues:false,parseTagValue:false}).parse(xml)).find(x=>x.name==='score-partwise');
  if(!root)throw new Error('Only partwise MusicXML scores are supported.');
- const measures=[],notes=[],lyrics=[],recognitionWarnings=[],measureIndices=new Map();
+ const measures=[],notes=[],lyrics=[],harmonies=[],recognitionWarnings=[],measureIndices=new Map();
  const parts=children(root,'part');
  const defaultDivisions=parts.flatMap(part=>children(part,'measure')).map(m=>num(child(m,'attributes'),'divisions')).find(n=>n>0)||1;
  for(const [partIndex,part]of parts.entries()){
@@ -46,6 +47,17 @@ export function readMusicXML(input){
      if(child(item,'divisions'))ownDivisions=true;divisions=Math.max(1,num(item,'divisions',divisions));
      const time=child(item,'time');if(time){beats=num(time,'beats',beats);beatType=num(time,'beat-type',beatType)}
      const key=child(item,'key');if(key){fifths=num(key,'fifths',fifths);mode=value(key,'mode')||mode}
+    }else if(item.name==='harmony'){
+     const root=child(item,'root'),bass=child(item,'bass'),kind=value(item,'kind');
+     const suffix={major:'',minor:'m',dominant:'7','major-seventh':'maj7','minor-seventh':'m7',diminished:'dim',augmented:'aug','suspended-fourth':'sus4','suspended-second':'sus2','major-sixth':'6','minor-sixth':'m6',power:'5','half-diminished':'m7b5','diminished-seventh':'dim7'}[kind];
+     if(kind==='none')harmonies.push({measure:index,onset:Math.max(0,cursor+num(item,'offset')/divisions),chord:'N.C.'});
+     else if(suffix!==undefined&&value(root,'root-step')in pitchClasses){
+      const rootPC=mod(pitchClasses[value(root,'root-step')]+num(root,'root-alter'));
+      const bassPC=value(bass,'bass-step')in pitchClasses?mod(pitchClasses[value(bass,'bass-step')]+num(bass,'bass-alter')):rootPC;
+      const spelling=(step,alter)=>step+(alter<0?'b'.repeat(Math.min(2,-alter)):'#'.repeat(Math.min(2,alter)));
+      const degrees=children(item,'degree').map(degree=>{const type=value(degree,'degree-type'),alter=num(degree,'degree-alter'),number=num(degree,'degree-value');return (type==='subtract'?'no':type==='add'&&!alter?'add':'')+(alter<0?'b':alter>0?'#':'')+number}).join('');
+      harmonies.push({measure:index,onset:Math.max(0,cursor+num(item,'offset')/divisions),chord:spelling(value(root,'root-step'),num(root,'root-alter'))+suffix+degrees+(bassPC!==rootPC?'/'+spelling(value(bass,'bass-step'),num(bass,'bass-alter')):'')});
+     }
     }else if(item.name==='backup')cursor=Math.max(0,cursor-num(item,'duration')/divisions);
     else if(item.name==='forward'){cursor+=num(item,'duration')/divisions;end=Math.max(end,cursor)}
     else if(item.name==='note'&&!child(item,'grace')){
@@ -78,17 +90,26 @@ export function readMusicXML(input){
   const nominal=measure.beats*4/measure.beatType;
   if(!measure.length)measure.length=nominal;
   if(!measure.implicit&&!(measure.index===0&&measure.length<nominal)){
-   if(Math.abs(measure.length-nominal)>.2)recognitionWarnings.push('Some recognized note durations disagree with the meter; measure boundaries were retained. Check the score.');
+   if(Math.abs(measure.length-nominal)>.2){measure.timingMismatch=true;recognitionWarnings.push('Some recognized note durations disagree with the meter; measure boundaries were retained. Check the score.')}
    measure.length=nominal;
   }
   measure.start=offset;offset+=measure.length;
  }
- for(const event of [...notes,...lyrics])event.time=measures[event.measure].start+event.onset;
+ for(const event of [...notes,...lyrics,...harmonies])event.time=measures[event.measure].start+event.onset;
  const title=value(root,'movement-title')||value(child(root,'work'),'work-title')||'Your guitar arrangement';
- return {title:title.slice(0,160),measures,notes,lyrics,recognitionWarnings:[...new Set(recognitionWarnings)]};
+ return {title:title.slice(0,160),measures,notes,lyrics,harmonies,recognitionWarnings:[...new Set(recognitionWarnings)]};
 }
 const templates=[['',[0,4,7]],['m',[0,3,7]],['7',[0,4,7,10]],['m7',[0,3,7,10]],['maj7',[0,4,7,11]],['dim',[0,3,6]],['sus4',[0,5,7]]];
 export function arrangeChords(score){
+ if(score.harmonies?.length){
+  const printed=[...score.harmonies].sort((a,b)=>a.time-b.time),frames=[];let chord=null;
+  for(const measure of score.measures){
+   const changes=printed.filter(h=>h.measure===measure.index),initial=changes.find(h=>h.onset===0);if(initial)chord=initial.chord;
+   frames.push({measure:measure.index,onset:0,time:measure.start,chord});
+   for(const change of changes){chord=change.chord;if(change.onset>0)frames.push({...change})}
+  }
+  return frames;
+ }
  const frames=[];
  let simultaneous=0,polyphonic=false;
  for(const event of score.notes.flatMap(n=>[{time:n.time,delta:1},{time:n.time+n.duration,delta:-1}]).sort((a,b)=>a.time-b.time||a.delta-b.delta)){simultaneous+=event.delta;if(simultaneous>=3){polyphonic=true;break}}
@@ -129,9 +150,9 @@ export function arrangeChords(score){
  for(const frame of [...frames].reverse()){if(frame.choices){frame.chord=winner?.chord||null;winner=winner?.previous}}
  return frames.map(({choices,...frame})=>frame);
 }
-export function scoreToChart(input){
- const score=readMusicXML(input),frames=arrangeChords(score);
- const at=time=>{let result=null;for(const frame of frames){if(frame.time>time+.001)break;if(frame.chord)result=frame.chord}return result};
+export function scoreToChart(input,{recognitionQuality}={}){
+ const score=readMusicXML(input);assertScoreQuality(score,recognitionQuality);const frames=arrangeChords(score);
+ const at=time=>{let result=null;for(const frame of frames){if(frame.time>time+.001)break;result=frame.chord}return result};
  const unique=new Map();
  for(const lyric of score.lyrics){const key=[lyric.part,lyric.voice,lyric.verse,lyric.time,lyric.text].join('|');unique.set(key,lyric)}
  const groups=new Map();
@@ -154,10 +175,11 @@ export function scoreToChart(input){
   rows=score.measures.map(measure=>{
    const measureFrames=frames.filter(f=>f.measure===measure.index),beat=measure.beatType===8&&measure.beats%3===0?1.5:4/measure.beatType;
    let lyrics='',chords=[],last=null;
-   for(const frame of measureFrames){const label=`beat ${Math.round(frame.onset/beat)+1}`;const column=lyrics.length;lyrics+=label.padEnd(12,' ');if(frame.chord&&frame.chord!==last){chords.push({text:frame.chord,column});last=frame.chord}}
+   for(const frame of measureFrames){const label=`beat ${Number((frame.onset/beat+1).toFixed(2))}`;const column=lyrics.length;lyrics+=label.padEnd(12,' ');if(frame.chord&&frame.chord!==last){chords.push({text:frame.chord,column});last=frame.chord}}
    return [{lyrics:'Measure '+measure.number,chords:[],section:true},{lyrics:lyrics.trimEnd(),chords}];
   }).flat();
  }
  if(!rows.some(r=>r.chords.length))throw new Error('The recognized notes did not produce a usable chord guide.');
- return {title:score.title,subtitle:lyrical?'Suggested guitar accompaniment · check recognition':'Instrumental chord guide · no lyrics recognized',rows,lyrical,measures:score.measures.length,noteCount:score.notes.length,warnings:[...score.recognitionWarnings,'Suggested accompaniment, not a verified transcription of the original harmony.','Music recognition can misread notes or lyrics. Check against your original.','Repeats are shown in printed order, not expanded into playback order.']};
+ const chordSource=score.harmonies.length?'printed':'suggested';
+ return {title:score.title,subtitle:lyrical?(chordSource==='printed'?'Recognized lyrics and printed chord symbols':'Suggested guitar accompaniment · review with your score'):'Instrumental chord guide · no lyrics recognized',rows,lyrical,chordSource,measures:score.measures.length,noteCount:score.notes.length,warnings:[...score.recognitionWarnings,...(chordSource==='suggested'?['Chords are a suggested accompaniment. A melody does not determine a unique chord progression.']:[]),'Music recognition can misread notes or lyrics. Compare this image with your score.','Repeats are shown in printed order, not expanded into playback order.']};
 }

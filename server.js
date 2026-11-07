@@ -1,6 +1,6 @@
 import http from 'node:http';
 import {readFile} from 'node:fs/promises';
-const allowed={'/':'index.html','/index.html':'index.html','/style.css':'style.css','/app.js':'app.js','/music.js':'music.js','/guitar-audio.js':'guitar-audio.js','/tuner.js':'tuner.js','/charts.js':'charts.js','/charts-ui.js':'charts-ui.js','/sheet-reader.js':'sheet-reader.js','/reader-ui.js':'reader-ui.js','/score-config.js':'score-config.js','/favicon.svg':'favicon.svg','/favicon.png':'favicon.png','/favicon.ico':'favicon.ico','/apple-touch-icon.png':'apple-touch-icon.png'};
+const allowed={'/':'index.html','/index.html':'index.html','/style.css':'style.css','/app.js':'app.js','/music.js':'music.js','/guitar-audio.js':'guitar-audio.js','/strumming.js':'strumming.js','/strumming-ui.js':'strumming-ui.js','/sounds/guitar/E2.mp3':'sounds/guitar/E2.mp3','/sounds/guitar/A2.mp3':'sounds/guitar/A2.mp3','/sounds/guitar/D3.mp3':'sounds/guitar/D3.mp3','/sounds/guitar/G3.mp3':'sounds/guitar/G3.mp3','/sounds/guitar/B3.mp3':'sounds/guitar/B3.mp3','/sounds/guitar/E4.mp3':'sounds/guitar/E4.mp3','/sounds/guitar/CREDITS.txt':'sounds/guitar/CREDITS.txt','/tuner.js':'tuner.js','/charts.js':'charts.js','/charts-ui.js':'charts-ui.js','/sheet-reader.js':'sheet-reader.js','/reader-ui.js':'reader-ui.js','/score-config.js':'score-config.js','/fonts/inter-latin-wght-normal.woff2':'fonts/inter-latin-wght-normal.woff2','/fonts/Inter-LICENSE.txt':'fonts/Inter-LICENSE.txt','/favicon.svg':'favicon.svg','/favicon.png':'favicon.png','/favicon.ico':'favicon.ico','/apple-touch-icon.png':'apple-touch-icon.png'};
 let scoreServicePromise;
 async function scores(){scoreServicePromise??=import('./score-service.js').then(module=>module.createScoreService());return scoreServicePromise}
 function json(res,status,body){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(body))}
@@ -32,7 +32,7 @@ const server=http.createServer(async(req,res)=>{
  if(!file){res.writeHead(404);res.end('Not found');return}
  try{
   const body=await readFile(new URL(file,import.meta.url));
-  res.setHeader('Content-Type',file.endsWith('.css')?'text/css':file.endsWith('.js')?'text/javascript':file.endsWith('.svg')?'image/svg+xml':file.endsWith('.png')?'image/png':file.endsWith('.ico')?'image/x-icon':'text/html');res.end(body);
+  res.setHeader('Content-Type',file.endsWith('.mp3')?'audio/mpeg':file.endsWith('.woff2')?'font/woff2':file.endsWith('.txt')?'text/plain; charset=utf-8':file.endsWith('.css')?'text/css':file.endsWith('.js')?'text/javascript':file.endsWith('.svg')?'image/svg+xml':file.endsWith('.png')?'image/png':file.endsWith('.ico')?'image/x-icon':'text/html');res.end(body);
  }catch{res.writeHead(500);res.end('Unable to load page')}
 });
 server.on('error',error=>{

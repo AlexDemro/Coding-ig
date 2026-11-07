@@ -1,6 +1,6 @@
 import './reader-ui.js';
 import {GuitarTuner,TuningGuide,microphoneConstraints} from './tuner.js';
-import {createGuitar} from './guitar-audio.js';
+import {initStrumming} from './strumming-ui.js';
 import {notes,transpose,extractChords} from './music.js';
 const $=id=>document.getElementById(id);let stopMic=()=>{},stopMetro=()=>{},stopStrum=()=>{};
 function navigate(tab){stopMic();stopMetro();stopStrum();document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.id===tab));document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x.dataset.tab===tab));$('page-name').textContent=document.querySelector(`[data-tab="${tab}"] span`).textContent;document.querySelector('aside')?.classList.remove('navigation-open');$('menu-toggle').setAttribute('aria-expanded','false');window.scrollTo(0,0)}
@@ -22,7 +22,6 @@ function prepareAudio(){
   return audio;
 }
 async function getAudio(){const ctx=prepareAudio();if(ctx.state!=='running')await ctx.resume();return ctx}
-let guitar;
 
 function clickAt(ctx,time,accent=true){const osc=ctx.createOscillator(),gain=ctx.createGain();osc.frequency.value=accent?1100:750;gain.gain.setValueAtTime(.15,time);gain.gain.exponentialRampToValueAtTime(.001,time+.055);osc.connect(gain);gain.connect(ctx.destination);osc.start(time);osc.stop(time+.06)}
 let metroRunning=false,metroTimer,metroBeat=0,nextBeat=0;
@@ -32,10 +31,7 @@ $('beats').onchange=()=>{metroBeat=0;dots()};
 stopMetro=()=>{metroRunning=false;clearInterval(metroTimer);$('metro-toggle').textContent='Start metronome';document.querySelectorAll('#beat-dots i').forEach(x=>x.classList.remove('on'))};
 $('metro-toggle').onclick=async()=>{if(metroRunning){stopMetro();return}try{const ctx=await getAudio();metroRunning=true;metroBeat=0;nextBeat=ctx.currentTime+.04;$('metro-toggle').textContent='Stop metronome';metroTimer=setInterval(()=>{while(nextBeat<ctx.currentTime+.1){const beat=metroBeat%Number($('beats').value);clickAt(ctx,nextBeat,beat===0);const delay=Math.max(0,(nextBeat-ctx.currentTime)*1000);setTimeout(()=>{if(metroRunning)document.querySelectorAll('#beat-dots i').forEach((x,i)=>x.classList.toggle('on',i===beat))},delay);nextBeat+=60/Number($('bpm').value);metroBeat++}},25)}catch{ $('metro-toggle').textContent='Audio unavailable — try again' }};
 let taps=[];$('tap').onclick=()=>{const now=performance.now();if(taps.length&&now-taps.at(-1)>2500)taps=[];taps.push(now);taps=taps.slice(-5);if(taps.length>1){$('bpm').value=Math.round(60000/((now-taps[0])/(taps.length-1)));$('bpm').oninput()}};
-const patterns=[{steps:['↓','·','↓','·','↓','·','↓','·'],description:'One downstroke on each beat. Relax your wrist and keep an even pulse.'},{steps:['↓','·','↓','↑','·','↑','↓','↑'],description:'The classic down, down-up, up-down-up. Let your hand keep swinging on beat three.'},{steps:['↓','↑','↓','↑','↓','↑','↓','↑'],description:'Even eighth notes. Keep the upstrokes light and accent the downbeats.'},{steps:['·','↑','·','↑','·','↑','·','↑'],description:'Play the “and” of each beat. Keep each upstroke crisp and short.'}];
-function renderPattern(){const p=patterns[Number($('pattern').value)];$('strum-grid').innerHTML=p.steps.map((s,i)=>`<div><small>${i%2?'&':i/2+1}</small><b>${s}</b></div>`).join('');$('pattern-description').textContent=p.description}renderPattern();let strumRunning=false,strumTimer;
-stopStrum=()=>{guitar?.stop();clearInterval(strumTimer);strumRunning=false;$('strum-play').textContent='Play pattern';document.querySelectorAll('#strum-grid div').forEach(x=>x.classList.remove('on'))};$('pattern').onchange=()=>{stopStrum();renderPattern()};$('strum-tempo').oninput=()=>$('strum-tempo-label').textContent=$('strum-tempo').value+' BPM';
-$('strum-play').onclick=async()=>{if(strumRunning){stopStrum();return}try{const ctx=await getAudio();guitar??=createGuitar(ctx);strumRunning=true;let step=0,next=ctx.currentTime+.05;$('strum-play').textContent='Stop pattern';strumTimer=setInterval(()=>{while(next<ctx.currentTime+.1){const i=step%8,s=patterns[Number($('pattern').value)].steps[i];if(s!=='·')guitar.strum(next,$('strum-chord').value,s==='↑');setTimeout(()=>{if(strumRunning)document.querySelectorAll('#strum-grid div').forEach((x,j)=>x.classList.toggle('on',i===j))},Math.max(0,(next-ctx.currentTime)*1000));step++;next+=30/Number($('strum-tempo').value)}},25)}catch{$('pattern-description').textContent='Audio could not start. Try again in a browser with Web Audio support.'}};
+stopStrum=initStrumming(getAudio);
 let targetMidi=null,guide=new TuningGuide(),lastGuide=null;
 function noteName(midi){return notes[(midi%12+12)%12]+(Math.floor(midi/12)-1)}
 function setTunerState(state,symbol,label,cents=null){

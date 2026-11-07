@@ -13,12 +13,18 @@ npm start
 
 Open `http://localhost:3000`. To replace an older running copy, stop it with Ctrl+C, then start from the newly extracted folder. If the port is occupied, `set PORT=3001` in Windows Command Prompt selects another port. Leave the terminal open.
 
+When updating an existing Windows installation, you can copy the new project files into the existing project folder (including `fonts/` and `sounds/`), keep your installed `node_modules` and sibling `.fretmate-tools` folder, restart `npm start`, and hard-refresh the browser with Ctrl+F5. These interface/audio updates do not require reinstalling Audiveris. Regenerate a sheet image to see its new font.
+
 ## Two photo-reading paths
 
 Upload a clear JPG, PNG, or WebP under 15 MB. There is no text editor and the output is a downloadable PNG image.
 
 - **Printed lyric/chord charts:** browser-based Tesseract OCR preserves the existing chord names and words. This path also works without a notation backend. Initial OCR/library/model downloads need internet access.
-- **Staff notation:** an installed Audiveris engine reads notes, rests, voices, key/time signatures, and lyric syllables into MusicXML. FretMate then builds a **suggested** guitar accompaniment. Recognized lyric syllables receive chords above the words; instrumental scores receive a measure-and-beat chord guide without invented lyrics.
+- **Staff notation:** an installed Audiveris engine reads notes, rests, voices, key/time signatures, and lyric syllables into MusicXML. FretMate checks the native recognition output before building an image. Printed harmony symbols in the export are preserved; when those are absent, chords are a **suggested** guitar accompaniment. Recognized lyric syllables receive chords above the words; instrumental scores receive a measure-and-beat guide without invented lyrics.
+
+Recognition now rejects substantial abnormal/mismatched measure timing, many weak note/lyric grades, missing lyric-to-note mappings, and broken syllable sequences. An `UNRELIABLE_SCORE` result clears any old image and explains how to improve the scan; it does not pass through to text OCR and turn uncertain staff symbols into a chart. These are conservative heuristics, not proof that an accepted transcription is accurate. They do not repair a badly recognized score, spell-check a song, or recover the original harmony from a melody. Clear close-ups of complete systems, including clefs and key signatures, work better than tiny previews or aged, grainy full-page photos.
+
+Generated PNGs use a bundled **Inter** font, with measured proportional-text placement to keep chords above their syllables. Its SIL Open Font License and attribution are in `fonts/Inter-LICENSE.txt`. Font loading falls back to a modern system sans-serif if unavailable. The circular progress indicator shows the engine/OCR's reported recognition stage, and spins during stages without a numerical progress value. Percentages are stage progress, not an estimate of remaining seconds.
 
 The staff path is real server-side recognition, not text OCR, a song catalog, or a paid lyrics API. It needs installation on the computer/server running Node. A scale or melody does not uniquely determine the original chords: the output is an arrangement, not a guaranteed transcription of the composer's harmony. Recognition can misread notes, rhythms, lyrics, and verses. Use high-resolution original scans and check the image against the score. Repeats are presented in printed order, not expanded into performance order.
 
@@ -73,16 +79,20 @@ The server checks file types/signatures and size, preprocesses orientation/contr
 - **Chord library:** 16 common shapes with search and family filters.
 - **Capo converter:** frets 0–12, both conversion directions and slash chords.
 - **Metronome:** tempo, beats/bar, accented downbeats and tap tempo.
-- **Strumming:** four patterns with synthesized plucked-string down/up strokes and G/D/Em/C practice chords.
+- **Strumming:** four starting patterns, an editable 8/16-step grid, down/up/rest cycling, separate accents, 12 practice chords, tempo, swing, natural-feel and volume controls. Edits save automatically in the current browser's local storage. Clear strokes starts a blank pattern; Reset returns to the campfire preset and defaults. Grid/preset edits stop playback; tempo/feel/chord changes apply as playback continues.
+
+Strumming normally uses six bundled FluidR3 acoustic steel-guitar samples, decoded locally with Web Audio and transposed to fretted pitches. Silence trimming, sample-pitch calibration, softer upstrokes, string-by-string pick timing, subtle stereo positioning, damped retriggers, body filtering, and output compression make the result less mechanical. Natural feel adds small timing/strength variations; Swing changes the long–short spacing while preserving the bar duration. If sample decoding/loading fails, a fractional-delay plucked-string model supplies a fallback. Samples, source links, stated CC BY 3.0 US license, and changes are credited in `sounds/guitar/CREDITS.txt`, linked on the page. No paid audio API is used.
 
 Audio stops on navigation or hiding the page. The header and browser tab share the same green natural-sign (♮) SVG, with PNG, ICO and Apple-touch alternatives. Versioned icon URLs help invalidate the old F icon. Browser caches may still need a hard refresh.
 
 ## Validation
 
-`npm test` runs 44 tests covering existing music tools plus MusicXML pitch/rhythm/voice parsing, chord arrangement, lyric syllables, instrumental output, MXL ZIP parsing, invalid XML, image signatures, and missing-engine behavior.
+`npm test` runs 55 tests covering existing music tools plus pattern persistence/normalization, subdivision conversion, swing timing, string pitch accuracy, proportional chart placement, MusicXML pitch/rhythm/voice parsing, printed harmony preservation, lyric syllables, recognition rejection criteria, instrumental output, MXL ZIP parsing, invalid XML, image signatures, and missing-engine behavior.
 
-`npm run test:browser` requires Chromium and Node.js 22+. Start the server on port 3001 or set `SITE_URL` to its address; `CHROMIUM_BIN` chooses another executable. Tests cover generated Web Audio input, navigation, branding, printed-chart PNG exports, failure/replacement handling, and a fixture notation-result image. OCR/native API responses are mocked in UI tests.
+`npm run test:browser` requires Chromium and Node.js 22+. Start the server on port 3001 or set `SITE_URL` to its address; `CHROMIUM_BIN` chooses another executable. Tests cover generated Web Audio input, navigation, branding, actual Inter-font PNG exports, circular progress, failure/replacement handling, and fixture notation-result/rejection responses. They also exercise editable strokes/accents, subdivision and swing changes, saved settings after reload, sampled-audio decoding, real offline audio rendering/headroom, playback cancellation, and desktop/mobile layouts. OCR/native API responses are mocked in UI tests.
 
 Separately, real Audiveris CLI and real HTTP image-upload recognition have run on official Allegretto, Hove and Ave Maria examples. The vocal example produced recognized lyric syllables and suggested chords; instrumental examples produced measure-based guides. Tests caught and fixed a legacy-language-model incompatibility and missing exported part timing metadata. Real recognition still produced some misspellings and uncertain note timing, so these results are not proof of transcription accuracy. The model incompatibility is now treated as a setup error rather than silently labeling a vocal score instrumental. This validates the installed Linux pipeline, not the exact chat images or Windows/Hostinger deployment. Physical microphones, actual iPhones, and broad photo-recognition accuracy remain unverified.
+
+The new quality checks accept the clean Allegretto recognition through a real HTTP upload (145 notes, 17 measures, no abnormal measures) and reject the flawed Ave Maria recognition through a real HTTP upload (9 of 14 native part-measures flagged abnormal), which formerly produced a garbled lyric sheet. This is a regression check on known outputs, not a general accuracy benchmark.
 
 To reproduce a real native-engine check against your own image, keep the server running and use `npm run test:omr -- path/to/score.png`. Add `--lyrics` for a vocal score to require recognized lyric syllables. Unlike the UI fixture tests, this uploads a real image and runs the installed Audiveris engine. It verifies usable data, not the correctness of every recognized note or inferred chord.

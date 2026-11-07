@@ -35,9 +35,10 @@ try{
  assert.ok(await evaluate("new URL(document.querySelector('link[rel=icon]').href).pathname==='/favicon.svg'"));
  assert.equal(await evaluate("document.querySelector('.brand-mark').src===document.querySelector('link[rel=icon]').href"),true,'browser tab and site header use exactly the same logo asset');
  // Simulated OCR exercises photo selection through an actual PNG image export.
- await evaluate(`window.Tesseract={createWorker:async()=>({setParameters:async()=>{},recognize:async file=>{if(file.name==='bad.png')return {data:{text:'Only staff symbols, no chart'}};if(file.name==='slow.png')await new Promise(r=>setTimeout(r,600));return {data:{text:'G          C\\nAn original practice line\\nAm         D\\nAnother original line'}}},terminate:async()=>{}})};window.uploadPhoto=name=>{const transfer=new DataTransfer();transfer.items.add(new File(['test'],name,{type:'image/png'}));const input=document.getElementById('sheet-file');input.files=transfer.files;input.dispatchEvent(new Event('change'))};window.uploadPhoto('chart.png')`);
+ await evaluate(`window.Tesseract={createWorker:async(lang,mode,options)=>({setParameters:async()=>{},recognize:async file=>{options.logger({status:'recognizing text',progress:.5});if(file.name==='bad.png')return {data:{text:'Only staff symbols, no chart'}};if(file.name==='slow.png')await new Promise(r=>setTimeout(r,600));return {data:{text:'G          C\\nAn original practice line\\nAm         D\\nAnother original line'}}},terminate:async()=>{}})};window.uploadPhoto=name=>{const transfer=new DataTransfer();transfer.items.add(new File(['test'],name,{type:'image/png'}));const input=document.getElementById('sheet-file');input.files=transfer.files;input.dispatchEvent(new Event('change'))};window.uploadPhoto('chart.png')`);
  for(let i=0;i<100;i++){if(await evaluate("document.querySelectorAll('#sheet-pages .chart-page').length>0"))break;await new Promise(r=>setTimeout(r,50))}
  assert.equal(await evaluate("document.querySelectorAll('#sheet-pages .chart-page').length"),1);
+ assert.equal(await evaluate("Array.from(document.fonts).some(f=>f.family==='FretMate Chart'&&f.status==='loaded')"),true,'export uses the bundled Inter font');
  assert.match(await evaluate("document.getElementById('read-status').textContent"),/image is ready/);
  assert.equal(await evaluate("fetch(document.querySelector('#sheet-pages img').src).then(r=>r.blob()).then(b=>b.type)"),'image/png');
  await evaluate("document.querySelector('#sheet-pages .chart-downloads a').click()");
@@ -48,13 +49,49 @@ try{
  for(let i=0;i<100;i++){if(await evaluate("!document.getElementById('sheet-retry').hidden"))break;await new Promise(r=>setTimeout(r,50))}
  assert.equal(await evaluate("document.querySelectorAll('#sheet-pages .chart-page').length"),0,'unreadable photo clears old image');
  assert.match(await evaluate("document.getElementById('read-status').textContent"),/Staff-note recognition is not enabled/);
- await evaluate("window.uploadPhoto('slow.png')");await new Promise(r=>setTimeout(r,70));await evaluate("window.uploadPhoto('chart.png')");
+ await evaluate("window.uploadPhoto('slow.png')");await new Promise(r=>setTimeout(r,70));
+ assert.equal(await evaluate("document.getElementById('sheet-progress').hidden"),false);
+ assert.equal(await evaluate("document.getElementById('sheet-progress').getAttribute('aria-valuenow')"),'45');
+ assert.equal(await evaluate("document.getElementById('sheet-progress-label').textContent"),'45%');
+ assert.equal(await evaluate("document.querySelectorAll('#sheet-progress svg circle').length"),2,'circular progress replaces the line');
+ const progressShot=await send('Page.captureScreenshot',{format:'png'});await writeFile(dir+'/reader-progress.png',Buffer.from(progressShot.data,'base64'));
+ await evaluate("window.uploadPhoto('chart.png')");
  await new Promise(r=>setTimeout(r,800));assert.equal(await evaluate("document.querySelectorAll('#sheet-pages .chart-page').length"),1,'replacing an in-flight photo cannot append stale images');
  // Native-recognition response is a fixture here; a separate HTTP test runs Audiveris itself.
  await evaluate(`window.fetch=(url,options)=>{const target=String(url);if(target.includes('/api/score-capabilities'))return Promise.resolve(new Response(JSON.stringify({available:true})));if(target.endsWith('/api/score'))return Promise.resolve(new Response(JSON.stringify({id:'fixture-score'}),{status:202}));if(target.includes('/api/score/fixture-score'))return Promise.resolve(new Response(JSON.stringify({state:'done',result:{title:'Instrumental test',subtitle:'Instrumental chord guide · no lyrics in score',lyrical:false,rows:[{lyrics:'Measure 1',chords:[],section:true},{lyrics:'beat 1      beat 2',chords:[{text:'G',column:0},{text:'D',column:12}]}]}})));return window.testFetch(url,options)};window.uploadPhoto('score.png')`);
  for(let i=0;i<100;i++){if(await evaluate("document.getElementById('read-status').textContent.includes('Instrumental chord guide ready')"))break;await new Promise(r=>setTimeout(r,50))}
  assert.match(await evaluate("document.getElementById('read-status').textContent"),/Instrumental chord guide ready/);
  assert.equal(await evaluate("document.querySelectorAll('#sheet-pages img').length"),1,'instrumental notation produces an image without invented lyrics');
+ await evaluate(`window.Tesseract.createWorker=async()=>{throw Error('Unreliable staff recognition must not fall through into printed-chart OCR')};window.fetch=(url,options)=>{const target=String(url);if(target.includes('/api/score-capabilities'))return Promise.resolve(new Response(JSON.stringify({available:true})));if(target.endsWith('/api/score'))return Promise.resolve(new Response(JSON.stringify({id:'fixture-score'}),{status:202}));if(target.includes('/api/score/fixture-score'))return Promise.resolve(new Response(JSON.stringify({state:'error',code:'UNRELIABLE_SCORE',message:'The recognized notes and lyric syllables are too uncertain. Try a clearer scan.'})));return window.testFetch(url,options)};window.uploadPhoto('uncertain.png')`);
+ for(let i=0;i<100;i++){if(await evaluate("!document.getElementById('sheet-retry').hidden"))break;await new Promise(r=>setTimeout(r,50))}
+ assert.equal(await evaluate("document.querySelectorAll('#sheet-pages img').length"),0,'uncertain recognition does not export a misleading image');
+ assert.match(await evaluate("document.getElementById('read-status').textContent"),/too uncertain/);
+ assert.equal(await evaluate("document.getElementById('sheet-progress').hidden"),true);
+ // Real audio nodes and the editable grid, including persistence and silence.
+ await evaluate("document.querySelector('[data-tab=\"strumming\"]').click()");
+ assert.equal(await evaluate("document.querySelectorAll('#strum-grid .stroke-button').length"),8);
+ await evaluate("document.querySelector('#strum-grid [data-step=\"0\"]').click()");
+ assert.equal(await evaluate("document.querySelector('#strum-grid [data-step=\"0\"]').textContent"),'↑');
+ await evaluate("document.querySelector('#strum-grid [data-accent=\"0\"]').click()");
+ assert.equal(await evaluate("document.querySelector('#strum-grid [data-accent=\"0\"]').getAttribute('aria-pressed')"),'false');
+ await evaluate("document.getElementById('strum-subdivision').value='4';document.getElementById('strum-subdivision').dispatchEvent(new Event('change'));document.getElementById('strum-swing').value='63';document.getElementById('strum-swing').dispatchEvent(new Event('input'))");
+ assert.equal(await evaluate("document.querySelectorAll('#strum-grid .stroke-button').length"),16);
+ assert.equal(await evaluate("JSON.parse(localStorage.getItem('fretmate-strumming-v1')).swing"),63);
+ await evaluate("document.getElementById('strum-play').click()");for(let i=0;i<100;i++){if(await evaluate("document.getElementById('strum-play').textContent==='Stop pattern'"))break;await new Promise(r=>setTimeout(r,50))}await new Promise(r=>setTimeout(r,100));
+ assert.equal(await evaluate("document.getElementById('strum-play').textContent"),'Stop pattern');
+ assert.equal(await evaluate("document.getElementById('strum-audio-status').textContent"),'Acoustic guitar tone','bundled guitar samples loaded and decoded');
+ assert.equal(await evaluate("document.querySelectorAll('#strum-grid .on').length"),1);
+ const strumShot=await send('Page.captureScreenshot',{format:'png'});await writeFile(dir+'/strumming-desktop.png',Buffer.from(strumShot.data,'base64'));
+ await evaluate("document.querySelector('[data-tab=\"chords\"]').click()");
+ assert.equal(await evaluate("document.getElementById('strum-play').textContent"),'Play pattern');
+ await evaluate("document.querySelector('[data-tab=\"strumming\"]').click();document.getElementById('strum-clear').click();document.getElementById('strum-play').click()");
+ assert.match(await evaluate("document.getElementById('pattern-description').textContent"),/Add a downstroke/);
+ const audioResult=await evaluate(`(async()=>{const {createGuitar,loadGuitarSamples}=await import('./guitar-audio.js');const ctx=new OfflineAudioContext(2,96000,48000);const samples=await loadGuitarSamples(ctx);if(!samples)throw Error('Sample decode failed');const guitar=createGuitar(ctx,samples);guitar.strum(.05,'G',false,{feel:0,volume:1});guitar.strum(.55,'G',true,{feel:.6,volume:1});guitar.strum(1.05,'D',false,{feel:.6,volume:1,accent:true});const buffer=await ctx.startRendering();let peak=0,energy=0;for(const sample of buffer.getChannelData(0)){peak=Math.max(peak,Math.abs(sample));energy+=sample*sample}return {peak,rms:Math.sqrt(energy/buffer.length)}})()`);
+ assert.ok(audioResult.rms>.005,'real audio graph produces audible guitar signal');assert.ok(audioResult.peak<.99,'guitar output has headroom');console.log('Rendered guitar output:',audioResult);
+ await send('Network.setBlockedURLs',{urls:['*fonts.googleapis.com*','*fonts.gstatic.com*','*sounds/guitar/*']});
+ const fallback=await evaluate(`(async()=>{const {createGuitar,loadGuitarSamples}=await import('./guitar-audio.js');const ctx=new OfflineAudioContext(2,48000,48000);const samples=await loadGuitarSamples(ctx);const guitar=createGuitar(ctx,samples);guitar.strum(.02,'G',false);const buffer=await ctx.startRendering();let energy=0;for(const n of buffer.getChannelData(0))energy+=n*n;return {usedFallback:samples===null,rms:Math.sqrt(energy/buffer.length)}})()`);
+ assert.equal(fallback.usedFallback,true);assert.ok(fallback.rms>.005,'failed samples retain an audible synthesized guitar fallback');
+ await send('Network.setBlockedURLs',{urls:['*fonts.googleapis.com*','*fonts.gstatic.com*']});
  await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
  await evaluate("document.getElementById('menu-toggle').click()");
  assert.equal(await evaluate("document.getElementById('menu-toggle').getAttribute('aria-expanded')"),'true');
@@ -63,7 +100,13 @@ try{
  assert.equal(await evaluate("document.getElementById('menu-toggle').getAttribute('aria-expanded')"),'false');
  assert.ok(await evaluate('document.documentElement.scrollWidth<=window.innerWidth'),'no mobile horizontal overflow');
  const mobile=await send('Page.captureScreenshot',{format:'png'});await writeFile(dir+'/tuner-mobile.png',Buffer.from(mobile.data,'base64'));
+ await evaluate("document.querySelector('[data-tab=\"strumming\"]').click();document.getElementById('strum-reset').click();document.querySelector('#strum-grid [data-step=\"0\"]').click()");
+ assert.ok(await evaluate('document.documentElement.scrollWidth<=window.innerWidth'),'custom pattern has no mobile horizontal overflow');
+ const strumMobile=await send('Page.captureScreenshot',{format:'png'});await writeFile(dir+'/strumming-mobile.png',Buffer.from(strumMobile.data,'base64'));
+ await send('Page.reload');
+ for(let i=0;i<100;i++){if(await evaluate("typeof document.getElementById('strum-play')?.onclick==='function'"))break;await new Promise(r=>setTimeout(r,50))}
+ assert.equal(await evaluate("document.querySelector('#strum-grid [data-step=\"0\"]').textContent"),'↑','custom edits survive reloading');
  assert.equal(errors.length,0,JSON.stringify(errors));
- console.log('Browser checks passed: song feature removed, FretMate branding, real Web Audio A2 detection and arc feedback, desktop/mobile navigation, upload-only photo reader, actual PNG preview/download (1240 × 1754), failed/new photo clears old results, favicon links, simulated photo-to-image pipeline.');
+ console.log('Browser checks passed: tuner, navigation, branding, Inter PNG preview/download, circular progress, unreliable recognition rejection, editable strumming strokes/accents/grid/swing, persistence, real guitar audio rendering, audio stop on navigation, desktop/mobile layouts. OCR/native API responses are fixtures.');
  console.log('Screenshots: '+dir+'/tuner-desktop.png; '+dir+'/tuner-mobile.png');
 }finally{ws?.close();browser.kill('SIGTERM')}

@@ -1,4 +1,4 @@
-// Shared image layout for pasted songs and OCR. ChordPro ([G]word) and
+// Image layout for recognized scores and photo OCR. ChordPro ([G]word) and
 // traditional chord-above-lyric lines are both accepted; no chords are invented.
 const chordPattern=/^[A-G](?:#|b)?(?:(?:maj|min|m|sus|dim|aug|add)?\d*)?(?:\/[A-G](?:#|b)?)?$/;
 export function isChord(text){return chordPattern.test(text)}
@@ -59,21 +59,33 @@ export function layoutRows(rows,{title='My chord sheet',artist='',columns=60,per
   for(let i=0;i<wrapped.length;i+=perPage)pages.push({title:title.trim()||'My chord sheet',artist:artist.trim(),rows:wrapped.slice(i,i+perPage),number:pages.length+1});
   return pages;
 }
-const escape=value=>String(value).replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&apos;'}[c]));
-function titleLines(value,max=42){const chars=Array.from(value);return [chars.slice(0,max).join(''),chars.length>max?chars.slice(max,max*2-1).join('')+(chars.length>=max*2?'…':''):''].filter(Boolean)}
-export function chartSVG(page,total=1){
-  const text=(x,y,value,size=28,color='#233b31',extra='')=>`<text x="${x}" y="${y}" font-size="${size}" fill="${color}" ${extra}>${escape(value)}</text>`;
-  let svg='<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1754" viewBox="0 0 1240 1754" role="img"><title>'+escape(page.title)+'</title><rect width="1240" height="1754" fill="#fffef9"/><g font-family="Arial, sans-serif">';
-  svg+=text(80,70,'FRETMATE · PLAY SOMETHING YOU LOVE',16,'#7b8e70','letter-spacing="2"');
-  titleLines(page.title).forEach((line,i)=>svg+=text(80,135+i*48,line,42,'#233b31','font-weight="700"'));
-  svg+=text(80,240,page.artist.length>75?page.artist.slice(0,74)+'…':page.artist,23,'#77856e');
-  svg+='<path d="M80 270H1160" stroke="#dfe5d7"/></g><g font-family="monospace" xml:space="preserve">';
-  page.rows.forEach((row,i)=>{
-    const y=320+i*73;
-    for(const chord of row.chords)svg+=text(80+chord.column*18.1,y,chord.text,28,'#46783c','font-weight="700" textLength="'+count(chord.text)*18.1+'" lengthAdjust="spacingAndGlyphs"');
-    svg+=text(80,y+34,row.lyrics,28,row.section?'#7e8c71':'#233b31',(row.section?'font-weight="700" ':'')+(row.lyrics?'textLength="'+count(row.lyrics)*18.1+'" lengthAdjust="spacingAndGlyphs"':''));
+// The PNG renderer supplies actual Inter font measurements. Keeping coordinates
+// in one drawing plan aligns chords with proportional text without stretching it.
+export function chartDrawing(page,total=1,measure=(text,{size})=>count(text)*size*.6){
+  const elements=[],left=80,right=1160;
+  const addText=(x,y,text,size=32,color='#233b31',weight=400)=>elements.push({type:'text',x,y,text,size,color,weight});
+  const line=(y)=>elements.push({type:'line',x1:left,y1:y,x2:right,y2:y,color:'#dfe5d7'});
+  const fitted=(text,size,weight)=>Math.min(size,(right-left)/Math.max(1,measure(text,{size,weight}))*size);
+  elements.push({type:'rect',x:0,y:0,width:1240,height:1754,color:'#fffef9'});
+  addText(left,70,'FRETMATE · PLAY SOMETHING YOU LOVE',15,'#7b8e70',600);
+  const title=Array.from(page.title),titleLines=[title.slice(0,40).join(''),title.length>40?title.slice(40,79).join('')+(title.length>79?'…':''):''].filter(Boolean);
+  titleLines.forEach((text,index)=>addText(left,138+index*54,text,fitted(text,48,700),'#233b31',700));
+  const subtitle=page.artist.length>90?page.artist.slice(0,89)+'…':page.artist;
+  addText(left,240,subtitle,fitted(subtitle,23,400),'#77856e');line(270);
+  page.rows.forEach((row,index)=>{
+    const y=320+index*73,chars=Array.from(row.lyrics),font={size:row.section?25:32,weight:row.section?600:400};
+    const chunks=[],chords=[];let cursor=0,x=0,lastChordEnd=-16;
+    for(const chord of [...row.chords].sort((a,b)=>a.column-b.column)){
+      const prefix=chars.slice(cursor,chord.column).join('')+' '.repeat(Math.max(0,chord.column-Math.max(cursor,chars.length)));
+      if(prefix)chunks.push({x,text:prefix});x+=measure(prefix,font);
+      x=Math.max(x,lastChordEnd+16);chords.push({x,text:chord.text});lastChordEnd=x+measure(chord.text,{size:32,weight:700});cursor=chord.column;
+    }
+    const tail=chars.slice(cursor).join('');if(tail)chunks.push({x,text:tail});
+    const width=Math.max(x+measure(tail,font),lastChordEnd,0),scale=Math.min(1,(right-left)/Math.max(1,width));
+    for(const chord of chords)addText(left+chord.x*scale,y,chord.text,32*scale,'#46783c',700);
+    for(const chunk of chunks)addText(left+chunk.x*scale,y+36,chunk.text,font.size*scale,row.section?'#7e8c71':'#233b31',font.weight);
   });
-  svg+='</g><path d="M80 1668H1160" stroke="#dfe5d7"/><g font-family="Arial, sans-serif">'+text(80,1710,'YOUR PRACTICE. YOUR PACE.',16,'#7b8e70')+text(1060,1710,`${page.number} / ${total}`,18,'#7b8e70')+'</g></svg>';
-  return svg;
+  line(1668);addText(left,1710,'YOUR PRACTICE. YOUR PACE.',15,'#7b8e70',500);addText(1060,1710,`${page.number} / ${total}`,18,'#7b8e70',500);
+  return elements;
 }
 export function chartSummary(pages){return {chords:pages.reduce((sum,p)=>sum+p.rows.reduce((n,r)=>n+r.chords.length,0),0),lyrics:pages.some(p=>p.rows.some(r=>r.lyrics.trim()&&!r.section))}}

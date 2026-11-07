@@ -19,10 +19,12 @@ test('plucked strings produce finite audio with a decaying tail',()=>{
 });
 test('guitar playback staggers string attacks and stops active notes',()=>{
  const sources=[];
- const ctx={sampleRate:48000,destination:{},createBuffer:()=>({copyToChannel(){}}),createGain:()=>({gain:{},connect(){},disconnect(){}}),createBufferSource(){const source={connect(){},disconnect(){},start(t){this.time=t},stop(){this.stopped=true}};sources.push(source);return source}};
- const guitar=createGuitar(ctx);guitar.strum(1,'D',false);
+ const parameter=()=>({value:0,setValueAtTime(v){this.value=v},cancelScheduledValues(){},exponentialRampToValueAtTime(){},setTargetAtTime(){}}),node=()=>({gain:parameter(),frequency:parameter(),Q:parameter(),threshold:parameter(),knee:parameter(),ratio:parameter(),attack:parameter(),release:parameter(),connect(){},disconnect(){}});
+ const ctx={currentTime:0,sampleRate:48000,destination:{},createBuffer:()=>({copyToChannel(){}}),createGain:node,createBiquadFilter:node,createDynamicsCompressor:node,createBufferSource(){const source={connect(){},disconnect(){},start(t){this.time=t},stop(){this.stopped=true}};sources.push(source);return source}};
+ const guitar=createGuitar(ctx);guitar.strum(1,'D',false,{feel:0});
  assert.equal(sources.length,4);
- assert.deepEqual(sources.map(s=>s.time),[1,1.014,1.028,1.042]);
+ for(let i=0;i<4;i++)assert.ok(Math.abs(sources[i].time-(1+i*.011))<1e-10);
+ guitar.strum(2,'D',false,{feel:0});assert.notEqual(sources[0].buffer,sources[4].buffer,'successive plucks use varied excitations');assert.ok(sources.slice(0,4).every(s=>s.stopped),'re-strumming damps the old strings');
  guitar.stop();assert.ok(sources.every(s=>s.stopped));
 });
 

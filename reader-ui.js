@@ -32,7 +32,12 @@ async function recognizeScore(file,report,isCurrent){
 export function initPhotoReader(){
  let generation=0,worker=null,lastFile;
  capabilities().then(result=>{$('reader-capability').textContent=result.available?'Staff-note recognition is enabled. Chords are suggested arrangements.':'Staff-note recognition is not enabled on this host. Printed lyric-and-chord charts still work.'});
- function status(message,value=null){$('read-status').textContent=message;$('sheet-progress').hidden=false;if(value===null)$('sheet-progress').removeAttribute('value');else $('sheet-progress').value=value}
+ function status(message,value=null){
+  $('read-status').textContent=message;const progress=$('sheet-progress');progress.hidden=false;
+  const known=typeof value==='number'&&Number.isFinite(value);progress.dataset.indeterminate=String(!known);
+  if(known){const percent=Math.max(0,Math.min(100,value));progress.style.setProperty('--reader-progress',String(percent));progress.setAttribute('aria-valuenow',String(percent));progress.removeAttribute('aria-valuetext');$('sheet-progress-label').textContent=Math.round(percent)+'%'}
+  else{progress.removeAttribute('aria-valuenow');progress.setAttribute('aria-valuetext','Working');$('sheet-progress-label').textContent='…'}
+ }
  async function process(file){
   const current=++generation,old=worker;worker=null;old?.terminate().catch(()=>{});clearSheetImages();$('sheet-retry').hidden=true;
   $('sheet-file').setAttribute('aria-busy','false');$('sheet-progress').hidden=true;
@@ -47,7 +52,7 @@ export function initPhotoReader(){
      const result=await recognizeScore(file,status,()=>current===generation);if(current!==generation||!result)return;
      status('Creating your guitar arrangement image…',96);
      const rendered=await renderSheetImages(result.rows,result);if(current!==generation||!rendered)return;
-     $('read-status').textContent=(result.lyrical?'Suggested chords and recognized lyrics are ready.':'Instrumental chord guide ready — no lyrics were recognized.')+' Check notes and chord choices against your original.';
+     $('read-status').textContent=(result.lyrical?(result.chordSource==='printed'?'Recognized lyrics and printed chord symbols are ready.':'Recognized lyrics and suggested chords are ready. These chords are an accompaniment, rather than a verified transcription.'):'Instrumental chord guide ready — no lyrics were recognized.')+' Compare the image with your original.';
      $('sheet-progress').hidden=true;return;
     }catch(error){if(current!==generation)return;if(error.code!=='NO_NOTATION')throw error;status('Checking for a printed lyric-and-chord chart…')}
    }

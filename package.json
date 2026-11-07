@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "test": "node music.test.js && node tuner.test.js && node charts.test.js && node sheet-reader.test.js && node musicxml-arranger.test.js && node score-service.test.js",
+    "test": "node music.test.js && node tuner.test.js && node strumming.test.js && node charts.test.js && node sheet-reader.test.js && node musicxml-arranger.test.js && node score-service.test.js && node score-quality.test.js",
     "test:browser": "node browser.test.mjs",
     "setup:omr": "node scripts/setup-omr.mjs",
     "test:omr": "node scripts/test-omr.mjs"

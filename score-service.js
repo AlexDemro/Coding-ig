@@ -7,6 +7,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import sharp from 'sharp';
 import {scoreToChart} from './musicxml-arranger.js';
+import {readRecognitionQuality} from './score-quality.js';
 const root=path.dirname(fileURLToPath(import.meta.url));
 export const toolsPath=process.env.FRETMATE_TOOLS_DIR||path.resolve(root,'../.fretmate-tools');
 export async function notationEngine(){
@@ -59,11 +60,15 @@ export function createScoreService({engineFinder=notationEngine,run=spawn,clock=
     if(missingLanguage)throw problem('English lyric recognition is not set up. Run npm run setup:omr to install the language model.',503,'OMR_SETUP');
     const names=await readdir(output);const exported=names.find(name=>/\.(mxl|musicxml|xml)$/i.test(name));
     if(!exported)throw problem('No staff notation was recognized in this image.',422,'NO_NOTATION');
-    update(84,'Building a suggested guitar accompaniment…');
-    const result=scoreToChart(await readFile(path.join(output,exported)));
+    update(84,'Checking recognized notes, timing, and lyric quality…');
+    const native=names.find(name=>name.endsWith('.omr'));
+    if(!native)throw problem('The notation engine could not verify its recognition result. Try a clearer scan.',422,'UNRELIABLE_SCORE');
+    const recognitionQuality=readRecognitionQuality(await readFile(path.join(output,native)));
+    update(90,'Building a suggested guitar accompaniment…');
+    const result=scoreToChart(await readFile(path.join(output,exported)),{recognitionQuality});
     if(lowResolution)result.warnings.unshift('This image is low resolution. Use the original scan for more reliable notes.');
     Object.assign(job,{state:'done',progress:100,message:'Suggested arrangement ready.',result,updated:clock()});
-   }catch(error){Object.assign(job,{state:'error',message:error.code==='SCORE_ERROR'||error.code==='NO_NOTATION'||error.code==='OMR_SETUP'?error.message:'The score could not be read reliably. Try a clearer, straight-on photo.',code:error.code||'NO_NOTATION',updated:clock()})}
+   }catch(error){Object.assign(job,{state:'error',message:['SCORE_ERROR','NO_NOTATION','OMR_SETUP','UNRELIABLE_SCORE'].includes(error.code)?error.message:'The score could not be read reliably. Try a clearer, straight-on photo.',code:error.code||'NO_NOTATION',updated:clock()})}
    finally{if(directory)await rm(directory,{recursive:true,force:true}).catch(()=>{});active=false}
   }
   // Start asynchronously; a client can poll actual recognition stages.

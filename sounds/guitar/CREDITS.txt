@@ -1,0 +1,13 @@
+Acoustic steel guitar samples — FluidR3 / MIDI.js Soundfonts
+
+Six open-string notes (E2, A2, D3, G3, B3, E4) from the FluidR3 acoustic_guitar_steel instrument, pre-rendered by the MIDI.js Soundfonts project.
+Fluid soundfont: Frank Wen and contributors. Pre-rendered soundfont repository: Benjamin Gleitz and contributors.
+
+Source: https://github.com/gleitz/midi-js-soundfonts
+Sample source directory: https://github.com/gleitz/midi-js-soundfonts/tree/gh-pages/FluidR3_GM/acoustic_guitar_steel-mp3
+The source project's README identifies the Fluid Soundfont as licensed under Creative Commons Attribution 3.0 United States:
+https://creativecommons.org/licenses/by/3.0/us/
+Source license statement: https://github.com/gleitz/midi-js-soundfonts#soundfonts-available
+
+The bundled MP3 files are unchanged. FretMate trims leading silence, normalizes levels, calibrates the sample tuning, transposes to fretted pitches, and adds dynamics, filtering, stereo positioning, and strum timing during playback.
+SHA256SUMS records checksums of the bundled files. No external sound service or API is required at runtime.
