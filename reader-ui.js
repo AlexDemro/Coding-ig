@@ -16,7 +16,7 @@ async function recognizeScore(file,report,isCurrent){
  const response=await fetch(scoreURL('/api/score'),{method:'POST',headers:{'Content-Type':file.type},body:file});
  const submitted=await response.json();if(!response.ok)throw Object.assign(new Error(submitted.error||'The score could not be uploaded.'),{code:submitted.code});
  const started=Date.now();
- while(Date.now()-started<210000){
+ while(Date.now()-started<250000){
   if(!isCurrent())return null;
   const poll=await fetch(scoreURL('/api/score/'+encodeURIComponent(submitted.id)));const job=await poll.json();
   if(!poll.ok)throw new Error(job.error||'The recognition job could not be found.');
@@ -55,7 +55,7 @@ export function initPhotoReader(){
      const result=await recognizeScore(file,status,()=>current===generation);if(current!==generation||!result)return;
      status('Creating your guitar arrangement image…',96);
      const rendered=await renderSheetImages(result.rows,result);if(current!==generation||!rendered)return;
-     $('read-status').textContent=(result.lyrical?(result.chordSource==='printed'?'Recognized lyrics and printed chord symbols are ready.':'Recognized lyrics and suggested chords are ready. These chords are an accompaniment, rather than a verified transcription.'):'Instrumental chord guide ready — no lyrics were recognized.')+' Compare the image with your original.';
+     $('read-status').textContent=result.recoveryMode?'Your simplified guitar arrangement is ready. Chords marked ? need review. Compare the image with your original.':(result.lyrical?(result.chordSource==='printed'?'Recognized lyrics and printed chord symbols are ready.':'Recognized lyrics and suggested chords are ready. These chords are an accompaniment, rather than a verified transcription.'):'Instrumental chord guide ready — no lyrics were recognized.')+' Compare the image with your original.';
      $('sheet-progress').hidden=true;return;
     }catch(error){if(current!==generation)return;if(error.code!=='NO_NOTATION')throw error;status('Checking for a printed lyric-and-chord chart…')}
    }

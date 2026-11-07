@@ -5,9 +5,10 @@ import {randomUUID} from 'node:crypto';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import sharp from 'sharp';
 import {scoreToChart} from './musicxml-arranger.js';
 import {readRecognitionQuality} from './score-quality.js';
+import {prepareScoreImage} from './score-image.js';
+import {recoverLyricChart} from './score-recovery.js';
 const root=path.dirname(fileURLToPath(import.meta.url));
 export const toolsPath=process.env.FRETMATE_TOOLS_DIR||path.resolve(root,'../.fretmate-tools');
 export async function notationEngine(){
@@ -38,16 +39,14 @@ export function createScoreService({engineFinder=notationEngine,run=spawn,clock=
    try{
     directory=await mkdtemp(path.join(tmpdir(),'fretmate-score-'));
     const input=path.join(directory,'score.png'),output=path.join(directory,'recognized');
-    const image=sharp(buffer,{limitInputPixels:40000000,failOn:'error'}).rotate();const metadata=await image.metadata();
-    const lowResolution=(metadata.width||0)<1000;
-    await image.resize({width:Math.max(1600,Math.min(2800,metadata.width||1600)),height:3600,fit:'inside'}).flatten({background:'white'}).grayscale().normalize().png().toFile(input);
+    const {aged,lowResolution}=await prepareScoreImage(buffer,input);
     await mkdir(output);await Promise.all(['config','cache','data'].map(name=>mkdir(path.join(toolsPath,name),{recursive:true})));
     const model=path.join(toolsPath,'tessdata');let haveModel=false;try{await access(path.join(model,'eng.traineddata'));haveModel=true}catch{}
     const env={...process.env,...(process.platform==='linux'?{XDG_CONFIG_HOME:path.join(toolsPath,'config'),XDG_CACHE_HOME:path.join(toolsPath,'cache'),XDG_DATA_HOME:path.join(toolsPath,'data')}:{}),...(haveModel?{TESSDATA_PREFIX:model}:{})};
     const stages=['LOAD','BINARY','SCALE','GRID','HEADERS','STEM_SEEDS','BEAMS','LEDGERS','HEADS','STEMS','REDUCTION','CUE_BEAMS','TEXTS','MEASURES','CHORDS','CURVES','SYMBOLS','LINKS','RHYTHMS','PAGE'];
     let logs='',lineBuffer='',missingLanguage=false;update(10,'Reading staff lines and musical symbols…');
     await new Promise((resolve,reject)=>{
-     const child=run(command,['-batch','-export','-output',output,input],{cwd:directory,env,windowsHide:true,stdio:['ignore','pipe','pipe']});
+     const child=run(command,['-batch','-export',...(aged?['-option','org.audiveris.omr.image.Template.maxDistanceLow=0.28']:[]),'-output',output,input],{cwd:directory,env,windowsHide:true,stdio:['ignore','pipe','pipe']});
      let timedOut=false;
      const timer=setTimeout(()=>{timedOut=true;child.kill('SIGTERM');setTimeout(()=>child.kill('SIGKILL'),2500).unref()},180000);timer.unref();
      const capture=chunk=>{logs=(logs+chunk).slice(-30000);lineBuffer+=String(chunk);let newline;
@@ -58,14 +57,23 @@ export function createScoreService({engineFinder=notationEngine,run=spawn,clock=
      child.once('close',code=>{clearTimeout(timer);if(timedOut)reject(problem('This score took too long to read. Try a smaller, sharper crop.',422,'NO_NOTATION'));else if(code!==0)reject(problem('The notation engine could not read this image. Try a sharper, straight-on photo.',422,'NO_NOTATION'));else resolve()});
     });
     if(missingLanguage)throw problem('English lyric recognition is not set up. Run npm run setup:omr to install the language model.',503,'OMR_SETUP');
-    const names=await readdir(output);const exported=names.find(name=>/\.(mxl|musicxml|xml)$/i.test(name));
-    if(!exported)throw problem('No staff notation was recognized in this image.',422,'NO_NOTATION');
+    const names=await readdir(output);const exported=names.filter(name=>/\.(mxl|musicxml|xml)$/i.test(name));
+    if(!exported.length)throw problem('No staff notation was recognized in this image.',422,'NO_NOTATION');
     update(84,'Checking recognized notes, timing, and lyric quality…');
     const native=names.find(name=>name.endsWith('.omr'));
     if(!native)throw problem('The notation engine could not verify its recognition result. Try a clearer scan.',422,'UNRELIABLE_SCORE');
-    const recognitionQuality=readRecognitionQuality(await readFile(path.join(output,native)));
+    const archive=await readFile(path.join(output,native)),recognitionQuality=readRecognitionQuality(archive);
     update(90,'Building a suggested guitar accompaniment…');
-    const result=scoreToChart(await readFile(path.join(output,exported)),{recognitionQuality});
+    let result;
+    try{
+     if(exported.length!==1)throw problem('The engine split this page into separate scores. A partial score will not be exported.',422,'UNRELIABLE_SCORE');
+     result=scoreToChart(await readFile(path.join(output,exported[0])),{recognitionQuality});
+    }catch(error){
+     if(error.code!=='UNRELIABLE_SCORE')throw error;
+     if(recognitionQuality.syllables<6)throw error;
+     if(!haveModel)throw problem('Lyric recovery needs the local English model. Run npm run setup:omr in this project folder, then restart npm start.',503,'OMR_SETUP');
+     result=await recoverLyricChart(archive,input,{modelPath:model,cachePath:path.join(toolsPath,'cache'),report:update});
+    }
     if(lowResolution)result.warnings.unshift('This image is low resolution. Use the original scan for more reliable notes.');
     Object.assign(job,{state:'done',progress:100,message:'Suggested arrangement ready.',result,updated:clock()});
    }catch(error){Object.assign(job,{state:'error',message:['SCORE_ERROR','NO_NOTATION','OMR_SETUP','UNRELIABLE_SCORE'].includes(error.code)?error.message:'The score could not be read reliably. Try a clearer, straight-on photo.',code:error.code||'NO_NOTATION',updated:clock()})}

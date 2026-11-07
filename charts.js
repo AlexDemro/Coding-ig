@@ -78,11 +78,11 @@ export function chartDrawing(page,total=1,measure=(text,{size})=>count(text)*siz
     for(const chord of [...row.chords].sort((a,b)=>a.column-b.column)){
       const prefix=chars.slice(cursor,chord.column).join('')+' '.repeat(Math.max(0,chord.column-Math.max(cursor,chars.length)));
       if(prefix)chunks.push({x,text:prefix});x+=measure(prefix,font);
-      x=Math.max(x,lastChordEnd+16);chords.push({x,text:chord.text});lastChordEnd=x+measure(chord.text,{size:32,weight:700});cursor=chord.column;
+      x=Math.max(x,lastChordEnd+16);chords.push({x,text:chord.text,uncertain:chord.uncertain});lastChordEnd=x+measure(chord.text,{size:32,weight:700});cursor=chord.column;
     }
     const tail=chars.slice(cursor).join('');if(tail)chunks.push({x,text:tail});
     const width=Math.max(x+measure(tail,font),lastChordEnd,0),scale=Math.min(1,(right-left)/Math.max(1,width));
-    for(const chord of chords)addText(left+chord.x*scale,y,chord.text,32*scale,'#46783c',700);
+    for(const chord of chords)addText(left+chord.x*scale,y,chord.text,32*scale,chord.uncertain?'#a67a31':'#46783c',700);
     for(const chunk of chunks)addText(left+chunk.x*scale,y+36,chunk.text,font.size*scale,row.section?'#7e8c71':'#233b31',font.weight);
   });
   line(1668);addText(left,1710,'YOUR PRACTICE. YOUR PACE.',15,'#7b8e70',500);addText(1060,1710,`${page.number} / ${total}`,18,'#7b8e70',500);
