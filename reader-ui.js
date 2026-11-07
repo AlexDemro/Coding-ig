@@ -1,6 +1,7 @@
 import {scoreApiBase} from './score-config.js';
 import {rowsFromOCR} from './sheet-reader.js';
 import {clearSheetImages,renderSheetImages} from './charts-ui.js';
+import {checkScoreConnection} from './score-connection.js';
 const $=id=>document.getElementById(id);
 let ocrPromise;
 function loadOCR(){
@@ -11,9 +12,6 @@ function loadOCR(){
  });return ocrPromise;
 }
 function scoreURL(route){return scoreApiBase.replace(/\/$/,'')+route}
-async function capabilities(){
- try{const response=await fetch(scoreURL('/api/score-capabilities'),{signal:AbortSignal.timeout(5000)});if(!response.ok)return {available:false};return await response.json()}catch{return {available:false}}
-}
 async function recognizeScore(file,report,isCurrent){
  const response=await fetch(scoreURL('/api/score'),{method:'POST',headers:{'Content-Type':file.type},body:file});
  const submitted=await response.json();if(!response.ok)throw Object.assign(new Error(submitted.error||'The score could not be uploaded.'),{code:submitted.code});
@@ -30,8 +28,13 @@ async function recognizeScore(file,report,isCurrent){
  throw new Error('The score took too long to read. Try a smaller, sharper crop.');
 }
 export function initPhotoReader(){
- let generation=0,worker=null,lastFile;
- capabilities().then(result=>{$('reader-capability').textContent=result.available?'Staff-note recognition is enabled. Chords are suggested arrangements.':'Staff-note recognition is not enabled on this host. Printed lyric-and-chord charts still work.'});
+ let generation=0,worker=null,lastFile,connectionRevision=0;
+ async function capabilities(){
+  const revision=++connectionRevision,result=await checkScoreConnection({base:scoreApiBase});
+  if(revision===connectionRevision)$('reader-capability').textContent=result.message;
+  return result;
+ }
+ void capabilities();
  function status(message,value=null){
   $('read-status').textContent=message;const progress=$('sheet-progress');progress.hidden=false;
   const known=typeof value==='number'&&Number.isFinite(value);progress.dataset.indeterminate=String(!known);
@@ -66,7 +69,7 @@ export function initPhotoReader(){
    const result=await local.recognize(file,{rotateAuto:true},{text:true,blocks:true});if(current!==generation)return;
    let rows;
    try{rows=rowsFromOCR(result.data)}catch(error){
-    if(!capability.available)throw new Error('Staff-note recognition is not enabled on this host. Your photo needs the installed notation engine, or you can upload a chart that already has printed lyrics and chord names.');
+    if(!capability.available)throw new Error('This photo could not be read as a printed lyric-and-chord chart. To read notes on staff lines, follow the connection message above, then try again.');
     throw new Error('Neither readable staff notation nor a printed lyric-and-chord chart was found. Try the original, higher-resolution scan rather than a small preview.');
    }
    status('Creating your image…',95);

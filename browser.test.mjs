@@ -48,7 +48,12 @@ try{
  await evaluate("window.uploadPhoto('bad.png')");
  for(let i=0;i<100;i++){if(await evaluate("!document.getElementById('sheet-retry').hidden"))break;await new Promise(r=>setTimeout(r,50))}
  assert.equal(await evaluate("document.querySelectorAll('#sheet-pages .chart-page').length"),0,'unreadable photo clears old image');
- assert.match(await evaluate("document.getElementById('read-status').textContent"),/Staff-note recognition is not enabled/);
+ assert.match(await evaluate("document.getElementById('read-status').textContent"),/connection message above/);
+ assert.match(await evaluate("document.getElementById('reader-capability').textContent"),/Audiveris was not found/);
+ await evaluate(`window.fetch=(url,options)=>String(url).includes('/api/score-capabilities')?Promise.resolve(new Response(JSON.stringify({available:false,code:'OMR_APP_SETUP'}))):window.testFetch(url,options);window.uploadPhoto('bad.png')`);
+ for(let i=0;i<100;i++){if(await evaluate("!document.getElementById('sheet-retry').hidden"))break;await new Promise(r=>setTimeout(r,50))}
+ assert.match(await evaluate("document.getElementById('reader-capability').textContent"),/Node packages or server files are missing/);
+ assert.match(await evaluate("document.getElementById('reader-capability').textContent"),/npm install/);
  await evaluate("window.uploadPhoto('slow.png')");await new Promise(r=>setTimeout(r,70));
  assert.equal(await evaluate("document.getElementById('sheet-progress').hidden"),false);
  assert.equal(await evaluate("document.getElementById('sheet-progress').getAttribute('aria-valuenow')"),'45');

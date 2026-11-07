@@ -24,7 +24,7 @@ export function validPhoto(buffer,type){
 export function createScoreService({engineFinder=notationEngine,run=spawn,clock=Date.now}={}){
  const jobs=new Map();let active=false;
  function prune(){for(const [id,job]of jobs)if(job.state!=='running'&&job.updated<clock()-15*60*1000)jobs.delete(id);while(jobs.size>=20){const expired=[...jobs].find(([,job])=>job.state!=='running');if(!expired)break;jobs.delete(expired[0])}}
- async function status(){const command=await engineFinder();return {available:Boolean(command),engine:command?'Audiveris':null,message:command?'Staff-note recognition is available.':'Staff-note recognition needs a one-time setup on the server. Run npm run setup:omr.'}}
+ async function status(){const command=await engineFinder();return {available:Boolean(command),engine:command?'Audiveris':null,code:command?'READY':'OMR_ENGINE_MISSING',message:command?'Staff-note recognition is available.':'The server could not find Audiveris. If it is already installed, run npm run setup:omr in this project folder, then restart npm start.'}}
  async function submit(buffer,type){
   prune();if(active)throw problem('Another score is being read. Please try again shortly.',429,'BUSY');
   if(buffer.length>15*1024*1024||!validPhoto(buffer,type))throw problem('Choose a valid JPG, PNG, or WebP photo under 15 MB.',400,'INVALID_PHOTO');

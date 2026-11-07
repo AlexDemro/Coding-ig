@@ -15,6 +15,10 @@ Open `http://localhost:3000`. To replace an older running copy, stop it with Ctr
 
 When updating an existing Windows installation, you can copy the new project files into the existing project folder (including `fonts/` and `sounds/`), keep your installed `node_modules` and sibling `.fretmate-tools` folder, restart `npm start`, and hard-refresh the browser with Ctrl+F5. These interface/audio updates do not require reinstalling Audiveris. Regenerate a sheet image to see its new font.
 
+If a newly downloaded local copy says the staff reader is unavailable, stop its server with Ctrl+C and run `npm install`, `npm run setup:omr`, then `npm start` **in that new folder, beside its `package.json`**. Audiveris itself does not need reinstalling if already installed. Check `http://localhost:3000/api/score-capabilities` for `"available":true`, then refresh the website with Ctrl+F5. Package installation is specific to the project folder; downloading another ZIP does not bring its `node_modules` along. Always copy the complete project, including new server modules.
+
+The connection message now distinguishes missing Node packages/project files (`OMR_APP_SETUP`), an engine the server cannot find (`OMR_ENGINE_MISSING`), a static server without the API, unexpected HTML responses, and connection/timeouts. It does not equate every failed request to a missing engine. Checks bypass stale response caches and use an AbortController timeout that also works without the newer `AbortSignal.timeout` method. Local setup instructions appear only on localhost/file URLs; remote visitors see a service-status message.
+
 ## Two photo-reading paths
 
 Upload a clear JPG, PNG, or WebP under 15 MB. There is no text editor and the output is a downloadable PNG image.
@@ -87,7 +91,7 @@ Audio stops on navigation or hiding the page. The header and browser tab share t
 
 ## Validation
 
-`npm test` runs 55 tests covering existing music tools plus pattern persistence/normalization, subdivision conversion, swing timing, string pitch accuracy, proportional chart placement, MusicXML pitch/rhythm/voice parsing, printed harmony preservation, lyric syllables, recognition rejection criteria, instrumental output, MXL ZIP parsing, invalid XML, image signatures, and missing-engine behavior.
+`npm test` runs 62 tests covering existing music tools plus pattern persistence/normalization, subdivision conversion, swing timing, string pitch accuracy, proportional chart placement, MusicXML pitch/rhythm/voice parsing, printed harmony preservation, lyric syllables, recognition rejection criteria, instrumental output, MXL ZIP parsing, invalid XML, image signatures, and missing-engine behavior.
 
 `npm run test:browser` requires Chromium and Node.js 22+. Start the server on port 3001 or set `SITE_URL` to its address; `CHROMIUM_BIN` chooses another executable. Tests cover generated Web Audio input, navigation, branding, actual Inter-font PNG exports, circular progress, failure/replacement handling, and fixture notation-result/rejection responses. They also exercise editable strokes/accents, subdivision and swing changes, saved settings after reload, sampled-audio decoding, real offline audio rendering/headroom, playback cancellation, and desktop/mobile layouts. OCR/native API responses are mocked in UI tests.
 
